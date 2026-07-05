@@ -1,0 +1,358 @@
+{
+    "descripcion": "Análisis comparativo segmentado — legítimas vs lavado",
+    "tabla_tesis": "Tabla 17",
+    "legitimas": {
+        "n_total": 4924490,
+        "primer_digito": {
+            "n_valido": 4924490,
+            "mad": 0.004905,
+            "chi2": 10680.3,
+            "p_valor": 0.0,
+            "z_scores": {
+                "1": 79.15,
+                "2": 33.27,
+                "3": 23.0,
+                "4": 35.88,
+                "5": 38.43,
+                "6": 37.61,
+                "7": 28.37,
+                "8": 18.46,
+                "9": 1.34
+            },
+            "resultados": {
+                "1": {
+                    "observado_pct": 31.74,
+                    "benford_pct": 30.1,
+                    "diferencia_abs": 0.0164,
+                    "z_score": 79.15,
+                    "n_observado": 1562987
+                },
+                "2": {
+                    "observado_pct": 18.18,
+                    "benford_pct": 17.61,
+                    "diferencia_abs": 0.0057,
+                    "z_score": 33.27,
+                    "n_observado": 895282
+                },
+                "3": {
+                    "observado_pct": 12.15,
+                    "benford_pct": 12.49,
+                    "diferencia_abs": 0.0034,
+                    "z_score": 23.0,
+                    "n_observado": 598381
+                },
+                "4": {
+                    "observado_pct": 9.21,
+                    "benford_pct": 9.69,
+                    "diferencia_abs": 0.0048,
+                    "z_score": 35.88,
+                    "n_observado": 453676
+                },
+                "5": {
+                    "observado_pct": 7.45,
+                    "benford_pct": 7.92,
+                    "diferencia_abs": 0.0047,
+                    "z_score": 38.43,
+                    "n_observado": 366899
+                },
+                "6": {
+                    "observado_pct": 6.27,
+                    "benford_pct": 6.69,
+                    "diferencia_abs": 0.0042,
+                    "z_score": 37.61,
+                    "n_observado": 308817
+                },
+                "7": {
+                    "observado_pct": 5.5,
+                    "benford_pct": 5.8,
+                    "diferencia_abs": 0.003,
+                    "z_score": 28.37,
+                    "n_observado": 270864
+                },
+                "8": {
+                    "observado_pct": 4.93,
+                    "benford_pct": 5.12,
+                    "diferencia_abs": 0.0018,
+                    "z_score": 18.46,
+                    "n_observado": 242873
+                },
+                "9": {
+                    "observado_pct": 4.56,
+                    "benford_pct": 4.58,
+                    "diferencia_abs": 0.0001,
+                    "z_score": 1.34,
+                    "n_observado": 224711
+                }
+            }
+        },
+        "segundo_digito": {
+            "n_valido": 4922852,
+            "mad": 0.000324,
+            "chi2": 110.1,
+            "p_valor": 1.3736563832671134e-19,
+            "z_scores": {
+                "0": 0.79,
+                "1": 0.81,
+                "2": 1.78,
+                "3": 1.34,
+                "4": 9.7,
+                "5": 1.43,
+                "6": 2.94,
+                "7": 2.74,
+                "8": 0.87,
+                "9": 1.73
+            },
+            "resultados": {
+                "0": {
+                    "observado_pct": 11.96,
+                    "benford_pct": 11.97,
+                    "diferencia_abs": 0.0001,
+                    "z_score": 0.79,
+                    "n_observado": 588594
+                },
+                "1": {
+                    "observado_pct": 11.4,
+                    "benford_pct": 11.39,
+                    "diferencia_abs": 0.0001,
+                    "z_score": 0.81,
+                    "n_observado": 561234
+                },
+                "2": {
+                    "observado_pct": 10.86,
+                    "benford_pct": 10.88,
+                    "diferencia_abs": 0.0003,
+                    "z_score": 1.78,
+                    "n_observado": 534479
+                },
+                "3": {
+                    "observado_pct": 10.41,
+                    "benford_pct": 10.43,
+                    "diferencia_abs": 0.0002,
+                    "z_score": 1.34,
+                    "n_observado": 512689
+                },
+                "4": {
+                    "observado_pct": 10.16,
+                    "benford_pct": 10.03,
+                    "diferencia_abs": 0.0013,
+                    "z_score": 9.7,
+                    "n_observado": 500267
+                },
+                "5": {
+                    "observado_pct": 9.69,
+                    "benford_pct": 9.67,
+                    "diferencia_abs": 0.0002,
+                    "z_score": 1.43,
+                    "n_observado": 476863
+                },
+                "6": {
+                    "observado_pct": 9.3,
+                    "benford_pct": 9.34,
+                    "diferencia_abs": 0.0004,
+                    "z_score": 2.94,
+                    "n_observado": 457771
+                },
+                "7": {
+                    "observado_pct": 9.0,
+                    "benford_pct": 9.04,
+                    "diferencia_abs": 0.0004,
+                    "z_score": 2.74,
+                    "n_observado": 443049
+                },
+                "8": {
+                    "observado_pct": 8.75,
+                    "benford_pct": 8.76,
+                    "diferencia_abs": 0.0001,
+                    "z_score": 0.87,
+                    "n_observado": 430550
+                },
+                "9": {
+                    "observado_pct": 8.48,
+                    "benford_pct": 8.5,
+                    "diferencia_abs": 0.0002,
+                    "z_score": 1.73,
+                    "n_observado": 417356
+                }
+            }
+        }
+    },
+    "lavado": {
+        "n_total": 5125,
+        "primer_digito": {
+            "n_valido": 5125,
+            "mad": 0.020627,
+            "chi2": 227.6,
+            "p_valor": 9.59588272442511e-45,
+            "z_scores": {
+                "1": 14.43,
+                "2": 6.49,
+                "3": 2.36,
+                "4": 2.94,
+                "5": 2.96,
+                "6": 1.82,
+                "7": 0.7,
+                "8": 4.8,
+                "9": 0.07
+            },
+            "resultados": {
+                "1": {
+                    "observado_pct": 39.36,
+                    "benford_pct": 30.1,
+                    "diferencia_abs": 0.0925,
+                    "z_score": 14.43,
+                    "n_observado": 2017
+                },
+                "2": {
+                    "observado_pct": 14.15,
+                    "benford_pct": 17.61,
+                    "diferencia_abs": 0.0346,
+                    "z_score": 6.49,
+                    "n_observado": 725
+                },
+                "3": {
+                    "observado_pct": 11.4,
+                    "benford_pct": 12.49,
+                    "diferencia_abs": 0.011,
+                    "z_score": 2.36,
+                    "n_observado": 584
+                },
+                "4": {
+                    "observado_pct": 8.47,
+                    "benford_pct": 9.69,
+                    "diferencia_abs": 0.0122,
+                    "z_score": 2.94,
+                    "n_observado": 434
+                },
+                "5": {
+                    "observado_pct": 6.79,
+                    "benford_pct": 7.92,
+                    "diferencia_abs": 0.0113,
+                    "z_score": 2.96,
+                    "n_observado": 348
+                },
+                "6": {
+                    "observado_pct": 6.05,
+                    "benford_pct": 6.69,
+                    "diferencia_abs": 0.0065,
+                    "z_score": 1.82,
+                    "n_observado": 310
+                },
+                "7": {
+                    "observado_pct": 5.56,
+                    "benford_pct": 5.8,
+                    "diferencia_abs": 0.0024,
+                    "z_score": 0.7,
+                    "n_observado": 285
+                },
+                "8": {
+                    "observado_pct": 3.63,
+                    "benford_pct": 5.12,
+                    "diferencia_abs": 0.0149,
+                    "z_score": 4.8,
+                    "n_observado": 186
+                },
+                "9": {
+                    "observado_pct": 4.6,
+                    "benford_pct": 4.58,
+                    "diferencia_abs": 0.0003,
+                    "z_score": 0.07,
+                    "n_observado": 236
+                }
+            }
+        },
+        "segundo_digito": {
+            "n_valido": 5125,
+            "mad": 0.004509,
+            "chi2": 17.2,
+            "p_valor": 0.04557514726665815,
+            "z_scores": {
+                "0": 2.75,
+                "1": 0.67,
+                "2": 0.5,
+                "3": 1.04,
+                "4": 0.02,
+                "5": 1.56,
+                "6": 2.35,
+                "7": 0.02,
+                "8": 1.15,
+                "9": 0.35
+            },
+            "resultados": {
+                "0": {
+                    "observado_pct": 10.71,
+                    "benford_pct": 11.97,
+                    "diferencia_abs": 0.0126,
+                    "z_score": 2.75,
+                    "n_observado": 549
+                },
+                "1": {
+                    "observado_pct": 11.08,
+                    "benford_pct": 11.39,
+                    "diferencia_abs": 0.0031,
+                    "z_score": 0.67,
+                    "n_observado": 568
+                },
+                "2": {
+                    "observado_pct": 10.65,
+                    "benford_pct": 10.88,
+                    "diferencia_abs": 0.0023,
+                    "z_score": 0.5,
+                    "n_observado": 546
+                },
+                "3": {
+                    "observado_pct": 10.89,
+                    "benford_pct": 10.43,
+                    "diferencia_abs": 0.0045,
+                    "z_score": 1.04,
+                    "n_observado": 558
+                },
+                "4": {
+                    "observado_pct": 10.05,
+                    "benford_pct": 10.03,
+                    "diferencia_abs": 0.0002,
+                    "z_score": 0.02,
+                    "n_observado": 515
+                },
+                "5": {
+                    "observado_pct": 10.32,
+                    "benford_pct": 9.67,
+                    "diferencia_abs": 0.0065,
+                    "z_score": 1.56,
+                    "n_observado": 529
+                },
+                "6": {
+                    "observado_pct": 10.3,
+                    "benford_pct": 9.34,
+                    "diferencia_abs": 0.0096,
+                    "z_score": 2.35,
+                    "n_observado": 528
+                },
+                "7": {
+                    "observado_pct": 9.05,
+                    "benford_pct": 9.04,
+                    "diferencia_abs": 0.0002,
+                    "z_score": 0.02,
+                    "n_observado": 464
+                },
+                "8": {
+                    "observado_pct": 8.29,
+                    "benford_pct": 8.76,
+                    "diferencia_abs": 0.0046,
+                    "z_score": 1.15,
+                    "n_observado": 425
+                },
+                "9": {
+                    "observado_pct": 8.64,
+                    "benford_pct": 8.5,
+                    "diferencia_abs": 0.0014,
+                    "z_score": 0.35,
+                    "n_observado": 443
+                }
+            }
+        }
+    },
+    "incremento_porcentual": {
+        "delta_mad_1d_pct": 320.6,
+        "delta_mad_2d_pct": 1292.7
+    }
+}

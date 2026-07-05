@@ -1,0 +1,75 @@
+{
+    "descripcion": "Análisis Benford primer dígito — conjunto global",
+    "tabla_tesis": "Tabla 15",
+    "dataset": "df_valido.csv",
+    "n_valido": 4929615,
+    "mad": 0.004913,
+    "interpretacion_mad": "Conformidad cercana",
+    "chi2_8": 10736.4,
+    "p_valor": 0.0,
+    "resultados_por_digito": {
+        "1": {
+            "observado_pct": 31.75,
+            "benford_pct": 30.1,
+            "diferencia_abs": 0.0165,
+            "z_score": 79.57,
+            "n_observado": 1565004
+        },
+        "2": {
+            "observado_pct": 18.18,
+            "benford_pct": 17.61,
+            "diferencia_abs": 0.0057,
+            "z_score": 33.04,
+            "n_observado": 896007
+        },
+        "3": {
+            "observado_pct": 12.15,
+            "benford_pct": 12.49,
+            "diferencia_abs": 0.0034,
+            "z_score": 23.07,
+            "n_observado": 598965
+        },
+        "4": {
+            "observado_pct": 9.21,
+            "benford_pct": 9.69,
+            "diferencia_abs": 0.0048,
+            "z_score": 35.96,
+            "n_observado": 454110
+        },
+        "5": {
+            "observado_pct": 7.45,
+            "benford_pct": 7.92,
+            "diferencia_abs": 0.0047,
+            "z_score": 38.51,
+            "n_observado": 367247
+        },
+        "6": {
+            "observado_pct": 6.27,
+            "benford_pct": 6.69,
+            "diferencia_abs": 0.0042,
+            "z_score": 37.65,
+            "n_observado": 309127
+        },
+        "7": {
+            "observado_pct": 5.5,
+            "benford_pct": 5.8,
+            "diferencia_abs": 0.003,
+            "z_score": 28.38,
+            "n_observado": 271149
+        },
+        "8": {
+            "observado_pct": 4.93,
+            "benford_pct": 5.12,
+            "diferencia_abs": 0.0019,
+            "z_score": 18.61,
+            "n_observado": 243059
+        },
+        "9": {
+            "observado_pct": 4.56,
+            "benford_pct": 4.58,
+            "diferencia_abs": 0.0002,
+            "z_score": 1.33,
+            "n_observado": 224947
+        }
+    }
+}

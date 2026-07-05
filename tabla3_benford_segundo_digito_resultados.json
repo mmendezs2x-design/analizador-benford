@@ -1,0 +1,83 @@
+{
+    "descripcion": "Análisis Benford segundo dígito — conjunto global",
+    "tabla_tesis": "Tabla 16",
+    "dataset": "df_valido.csv",
+    "n_valido": 4927977,
+    "excluidos_un_solo_digito": 1638,
+    "mad": 0.000324,
+    "interpretacion_mad": "Conformidad cercana",
+    "chi2_9": 109.9,
+    "p_valor": 1.5594554531309805e-19,
+    "resultados_por_digito": {
+        "0": {
+            "observado_pct": 11.96,
+            "benford_pct": 11.97,
+            "diferencia_abs": 0.0001,
+            "z_score": 0.88,
+            "n_observado": 589143
+        },
+        "1": {
+            "observado_pct": 11.4,
+            "benford_pct": 11.39,
+            "diferencia_abs": 0.0001,
+            "z_score": 0.79,
+            "n_observado": 561802
+        },
+        "2": {
+            "observado_pct": 10.86,
+            "benford_pct": 10.88,
+            "diferencia_abs": 0.0002,
+            "z_score": 1.8,
+            "n_observado": 535025
+        },
+        "3": {
+            "observado_pct": 10.41,
+            "benford_pct": 10.43,
+            "diferencia_abs": 0.0002,
+            "z_score": 1.31,
+            "n_observado": 513247
+        },
+        "4": {
+            "observado_pct": 10.16,
+            "benford_pct": 10.03,
+            "diferencia_abs": 0.0013,
+            "z_score": 9.69,
+            "n_observado": 500782
+        },
+        "5": {
+            "observado_pct": 9.69,
+            "benford_pct": 9.67,
+            "diferencia_abs": 0.0002,
+            "z_score": 1.48,
+            "n_observado": 477392
+        },
+        "6": {
+            "observado_pct": 9.3,
+            "benford_pct": 9.34,
+            "diferencia_abs": 0.0004,
+            "z_score": 2.86,
+            "n_observado": 458299
+        },
+        "7": {
+            "observado_pct": 9.0,
+            "benford_pct": 9.04,
+            "diferencia_abs": 0.0004,
+            "z_score": 2.73,
+            "n_observado": 443513
+        },
+        "8": {
+            "observado_pct": 8.75,
+            "benford_pct": 8.76,
+            "diferencia_abs": 0.0001,
+            "z_score": 0.9,
+            "n_observado": 430975
+        },
+        "9": {
+            "observado_pct": 8.48,
+            "benford_pct": 8.5,
+            "diferencia_abs": 0.0002,
+            "z_score": 1.72,
+            "n_observado": 417799
+        }
+    }
+}
