@@ -184,10 +184,10 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
   "grados_libertad": 8,
   "p_valor": 0.0,
   "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
-  "resultados_por_digito": [
-    {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
-    {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300}
-  ]
+  "resultados_por_digito": {
+    "1": {"observado_pct": 31.75, "benford_pct": 30.1, "diferencia_abs": 0.0165, "z_score": 79.57, "n_observado": 1565004},
+    "2": {"observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300}
+  }
 }
 ```
 
@@ -195,15 +195,22 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
   **empiece con `chi2`** (ej. `chi2_8`, `chi2_9`, según los grados de
   libertad) — así son los nombres reales usados en estos archivos.
 - El detalle por dígito acepta tanto `resultados` como
-  `resultados_por_digito` (nombre real usado en las Tablas 15 y 16).
-  Debe traer un objeto por cada dígito posible (9 para el primer
-  dígito, 10 para el segundo). `digito`, `observado_pct` y
-  `benford_pct` son obligatorios; `diferencia_abs`, `z_score` y
-  `n_observado` son opcionales y, si están presentes, se usan **tal
-  cual** (no se recalculan) tanto en la tabla de detalle como en el
-  gráfico de Z-scores.
+  `resultados_por_digito` (nombre real usado en las Tablas 15 y 16), y
+  admite dos formatos:
+  - **Diccionario** (formato real de estos archivos): la clave es el
+    dígito como string (`"1"`, `"2"`, ..., `"9"` para el primer dígito;
+    `"0"`...`"9"` para el segundo) y el valor es un objeto con
+    `observado_pct`, `benford_pct`, `diferencia_abs`, `z_score` y
+    `n_observado`.
+  - **Lista** de objetos, cada uno con un campo `digito` además de los
+    anteriores — soportado por si algún archivo usa este formato.
+  En ambos casos, `observado_pct` y `benford_pct` son obligatorios;
+  `diferencia_abs`, `z_score` y `n_observado` son opcionales y, si
+  están presentes, se usan **tal cual** (no se recalculan) tanto en la
+  tabla de detalle como en el gráfico de Z-scores. Las filas se ordenan
+  por dígito antes de graficar.
 - `observado_pct` / `benford_pct` van en unidades de **porcentaje**
-  (ej. `30.10` para 30,10 %), no como fracción 0–1.
+  (ej. `31.75` para 31,75 %), no como fracción 0–1.
 - `grados_libertad` es opcional (por defecto, cantidad de dígitos − 1).
 - `interpretacion_mad` es opcional: si falta, la app muestra el
   veredicto calculado con los mismos rangos de Nigrini que el resto de
@@ -217,12 +224,12 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 ```json
 {
   "legitimas": {
-    "primer_digito":  {"n_valido": 4900000, "mad": 0.004905, "chi2_8": 9000.0, "p_valor": 0.0, "resultados_por_digito": ["..."]},
-    "segundo_digito": {"n_valido": 4900000, "mad": 0.000324, "chi2_9": 100.0,  "p_valor": 0.5, "resultados_por_digito": ["..."]}
+    "primer_digito":  {"n_valido": 4900000, "mad": 0.004905, "chi2_8": 9000.0, "p_valor": 0.0, "resultados_por_digito": {"1": "..."}},
+    "segundo_digito": {"n_valido": 4900000, "mad": 0.000324, "chi2_9": 100.0,  "p_valor": 0.5, "resultados_por_digito": {"0": "..."}}
   },
   "lavado": {
-    "primer_digito":  {"n_valido": 29615, "mad": 0.020627, "chi2_8": 5000.0, "p_valor": 0.0, "resultados_por_digito": ["..."]},
-    "segundo_digito": {"n_valido": 27977, "mad": 0.004509, "chi2_9": 200.0,  "p_valor": 0.0, "resultados_por_digito": ["..."]}
+    "primer_digito":  {"n_valido": 29615, "mad": 0.020627, "chi2_8": 5000.0, "p_valor": 0.0, "resultados_por_digito": {"1": "..."}},
+    "segundo_digito": {"n_valido": 27977, "mad": 0.004509, "chi2_9": 200.0,  "p_valor": 0.0, "resultados_por_digito": {"0": "..."}}
   },
   "incremento_porcentual": {
     "delta_mad_1d_pct": 320.6,

@@ -476,7 +476,9 @@ NOTA_NOMBRES_ALTERNATIVOS = (
     "El campo de chi-cuadrado acepta tanto `chi2` como cualquier nombre que "
     "empiece con `chi2` (ej. `chi2_8`, `chi2_9`, según los grados de "
     "libertad). El detalle por dígito acepta tanto `resultados` como "
-    "`resultados_por_digito`."
+    "`resultados_por_digito`, y este último puede venir como **diccionario** "
+    "(clave = dígito en string, ej. `\"1\"`, `\"2\"`...) o como lista de "
+    "objetos con un campo `digito`."
 )
 
 EJEMPLO_TABLA_PRIMER_DIGITO = {
@@ -486,11 +488,11 @@ EJEMPLO_TABLA_PRIMER_DIGITO = {
     "grados_libertad": 8,
     "p_valor": 0.0,
     "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
-    "resultados_por_digito": [
-        {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
-        {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300},
-        "... (un objeto por cada dígito del 1 al 9)",
-    ],
+    "resultados_por_digito": {
+        "1": {"observado_pct": 31.75, "benford_pct": 30.1, "diferencia_abs": 0.0165, "z_score": 79.57, "n_observado": 1565004},
+        "2": {"observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300},
+        "...": "... (una clave por cada dígito del 1 al 9)",
+    },
 }
 
 EJEMPLO_TABLA_SEGUNDO_DIGITO = {
@@ -500,32 +502,32 @@ EJEMPLO_TABLA_SEGUNDO_DIGITO = {
     "grados_libertad": 9,
     "p_valor": 0.0,
     "interpretacion_mad": "Conformidad aceptable con Benford",
-    "resultados_por_digito": [
-        {"digito": 0, "observado_pct": 12.00, "benford_pct": 11.968, "diferencia_abs": 0.032, "z_score": 0.9, "n_observado": 591300},
-        {"digito": 1, "observado_pct": 11.40, "benford_pct": 11.389, "diferencia_abs": 0.011, "z_score": 0.3, "n_observado": 561800},
-        "... (un objeto por cada dígito del 0 al 9)",
-    ],
+    "resultados_por_digito": {
+        "0": {"observado_pct": 12.00, "benford_pct": 11.968, "diferencia_abs": 0.032, "z_score": 0.9, "n_observado": 591300},
+        "1": {"observado_pct": 11.40, "benford_pct": 11.389, "diferencia_abs": 0.011, "z_score": 0.3, "n_observado": 561800},
+        "...": "... (una clave por cada dígito del 0 al 9)",
+    },
 }
 
 EJEMPLO_TABLA_COMPARACION = {
     "legitimas": {
         "primer_digito": {
             "n_valido": 4900000, "mad": 0.004905, "chi2_8": 9000.0, "p_valor": 0.0,
-            "resultados_por_digito": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+            "resultados_por_digito": {"1": "... (mismo formato que en tabla2, una clave por dígito del 1 al 9)"},
         },
         "segundo_digito": {
             "n_valido": 4900000, "mad": 0.000324, "chi2_9": 100.0, "p_valor": 0.5,
-            "resultados_por_digito": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+            "resultados_por_digito": {"0": "... (mismo formato que en tabla3, una clave por dígito del 0 al 9)"},
         },
     },
     "lavado": {
         "primer_digito": {
             "n_valido": 29615, "mad": 0.020627, "chi2_8": 5000.0, "p_valor": 0.0,
-            "resultados_por_digito": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+            "resultados_por_digito": {"1": "... (mismo formato que en tabla2, una clave por dígito del 1 al 9)"},
         },
         "segundo_digito": {
             "n_valido": 27977, "mad": 0.004509, "chi2_9": 200.0, "p_valor": 0.0,
-            "resultados_por_digito": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+            "resultados_por_digito": {"0": "... (mismo formato que en tabla3, una clave por dígito del 0 al 9)"},
         },
     },
     "incremento_porcentual": {
@@ -589,27 +591,55 @@ def obtener_chi2(datos: dict):
 
 
 def tabla_desde_resultados(resultados):
-    """Construye un DataFrame a partir de la lista de resultados por dígito
-    del JSON, usando los campos (observado_pct, benford_pct, diferencia_abs,
-    z_score, n_observado) tal cual vienen, sin recalcular nada.
+    """Construye un DataFrame con el detalle por dígito del JSON, usando los
+    campos (observado_pct, benford_pct, diferencia_abs, z_score, n_observado)
+    tal cual vienen, sin recalcular nada.
+
+    Soporta los dos formatos que puede traer 'resultados'/'resultados_por_digito':
+      - dict: {"1": {"observado_pct": ..., "benford_pct": ..., ...}, "2": {...}}
+        (formato real de los JSON de la tesis: la clave del diccionario es el
+        dígito, como string).
+      - list: [{"digito": 1, "observado_pct": ..., "benford_pct": ..., ...}, ...]
 
     Se fuerzan las columnas esperadas explícitamente (vía `columns=`) para
     que el DataFrame nunca quede sin ellas —ni siquiera si `resultados`
     viene vacío o con elementos inválidos—, evitando un KeyError aguas
-    abajo en los gráficos."""
+    abajo en los gráficos. Las filas quedan ordenadas por dígito."""
     filas = []
-    for item in resultados or []:
-        if not isinstance(item, dict):
-            continue
-        filas.append({
-            "digito": item["digito"],
-            "observado_pct": item["observado_pct"],
-            "benford_pct": item["benford_pct"],
-            "diferencia_abs": item.get("diferencia_abs"),
-            "z_score": item.get("z_score"),
-            "n_observado": item.get("n_observado"),
-        })
-    return pd.DataFrame(filas, columns=COLUMNAS_TABLA_RESULTADOS)
+
+    if isinstance(resultados, dict):
+        for clave_digito, valores in resultados.items():
+            if not isinstance(valores, dict):
+                continue
+            try:
+                digito = int(clave_digito)
+            except (TypeError, ValueError):
+                digito = clave_digito
+            filas.append({
+                "digito": digito,
+                "observado_pct": valores["observado_pct"],
+                "benford_pct": valores["benford_pct"],
+                "diferencia_abs": valores.get("diferencia_abs"),
+                "z_score": valores.get("z_score"),
+                "n_observado": valores.get("n_observado"),
+            })
+    else:
+        for item in resultados or []:
+            if not isinstance(item, dict):
+                continue
+            filas.append({
+                "digito": item["digito"],
+                "observado_pct": item["observado_pct"],
+                "benford_pct": item["benford_pct"],
+                "diferencia_abs": item.get("diferencia_abs"),
+                "z_score": item.get("z_score"),
+                "n_observado": item.get("n_observado"),
+            })
+
+    tabla = pd.DataFrame(filas, columns=COLUMNAS_TABLA_RESULTADOS)
+    if not tabla.empty:
+        tabla = tabla.sort_values("digito", kind="stable").reset_index(drop=True)
+    return tabla
 
 
 def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
