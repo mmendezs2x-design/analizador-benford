@@ -6,9 +6,11 @@ metodología de auditoría forense de **Mark Nigrini**.
 
 ## Funcionalidades
 
-1. **Carga de datos**: sube un archivo CSV de transacciones y elige la
-   columna de montos a analizar y, opcionalmente, una columna binaria de
-   etiqueta de riesgo (por ejemplo: legítima/fraude, 0/1, Sí/No).
+1. **Carga de datos**: sube un archivo de transacciones en formato **CSV**,
+   **CSV.GZ** (comprimido con gzip) o **ZIP** (con uno o más CSV dentro; si
+   contiene varios, se puede elegir cuál usar). Elige la columna de montos
+   a analizar y, opcionalmente, una columna binaria de etiqueta de riesgo
+   (por ejemplo: legítima/fraude, 0/1, Sí/No).
 2. **Preprocesamiento**: convierte los montos a valores absolutos y excluye
    automáticamente los montos menores a **USD 1,00**.
 3. **Análisis de primer y segundo dígito**: compara las frecuencias
@@ -26,6 +28,14 @@ metodología de auditoría forense de **Mark Nigrini**.
    porcentual del MAD** del grupo de riesgo respecto al legítimo.
 7. **Veredicto de conformidad** según los rangos de MAD definidos por
    Nigrini, tanto para el análisis global como para cada segmento.
+8. **Modo "Comparación de subconjuntos"**: en lugar de un único archivo con
+   etiqueta, permite cargar hasta tres archivos independientes — "Conjunto
+   Válido (global)", "Transacciones Legítimas" y "Transacciones de
+   Lavado" — cada uno con su propia columna de montos. Con dos o más
+   conjuntos cargados se genera una tabla comparativa (MAD, Chi-cuadrado,
+   valor p y veredicto para primer y segundo dígito) que resalta
+   visualmente el conjunto de Lavado, además del incremento porcentual de
+   su MAD respecto al de Legítimas.
 
 ## Rangos de conformidad de MAD (Nigrini)
 
@@ -71,10 +81,11 @@ streamlit run app.py
 La aplicación se abrirá automáticamente en tu navegador, normalmente en
 `http://localhost:8501`.
 
-## Formato esperado del archivo CSV
+## Formato esperado del archivo
 
-El archivo debe tener encabezados de columna e incluir, como mínimo, una
-columna numérica con los montos de las transacciones. Ejemplo:
+El archivo puede subirse como **.csv**, **.csv.gz** o **.zip** (con uno o
+más CSV dentro) y debe tener encabezados de columna, incluyendo como
+mínimo una columna numérica con los montos de las transacciones. Ejemplo:
 
 ```csv
 id_transaccion,fecha,monto,etiqueta_riesgo
@@ -86,9 +97,24 @@ id_transaccion,fecha,monto,etiqueta_riesgo
 - La columna de **montos** puede contener valores positivos o negativos
   (se toma el valor absoluto) y se excluyen automáticamente los montos
   menores a USD 1,00.
-- La columna de **etiqueta de riesgo** (opcional) puede tener cualquier
-  par de valores (texto o numéricos); en la interfaz se selecciona cuál de
-  los dos valores representa "riesgo".
+- La columna de **etiqueta de riesgo** (opcional, solo en el modo de
+  archivo único) puede tener cualquier par de valores (texto o numéricos);
+  en la interfaz se selecciona cuál de los dos valores representa "riesgo".
+
+## Modo "Comparación de subconjuntos"
+
+Como alternativa al archivo único con etiqueta, el modo de comparación
+permite subir hasta tres archivos por separado, cada uno ya segmentado:
+
+- **Conjunto Válido (global)**
+- **Transacciones Legítimas**
+- **Transacciones de Lavado**
+
+Cada archivo puede tener su propia columna de montos. Con al menos dos
+conjuntos cargados se muestra una tabla comparativa (MAD, Chi-cuadrado,
+valor p y veredicto para primer y segundo dígito), resaltando la fila de
+"Transacciones de Lavado", y — si se cargaron "Legítimas" y "Lavado" — el
+incremento porcentual del MAD de Lavado respecto a Legítimas.
 
 ## Estructura del proyecto
 
