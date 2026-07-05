@@ -2,24 +2,25 @@
 Analizador Forense de Benford
 Aplicación Streamlit para detección de anomalías en transacciones financieras
 basada en la metodología de Nigrini (análisis de primer y segundo dígito).
+
+Optimizada para bajo consumo de memoria: los archivos se leen y procesan por
+chunks, extrayendo únicamente la columna de montos (y, si aplica, la de
+etiqueta) y acumulando solo conteos de dígitos — nunca se retiene el archivo
+completo ni la serie completa de montos en memoria.
 """
 
+import gc
 import gzip
-import io
+import json
 import zipfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from benford import (
-    DIST_PRIMER_DIGITO,
-    DIST_SEGUNDO_DIGITO,
-    analisis_completo,
-    calcular_mad,
-    preprocesar_montos,
-)
+from benford import AcumuladorDigitos, veredicto_mad_primer_digito, veredicto_mad_segundo_digito
 
 st.set_page_config(
     page_title="Analizador Forense de Benford",
@@ -29,36 +30,138 @@ st.set_page_config(
 
 UMBRAL_MINIMO = 1.00
 TIPOS_ARCHIVO_ACEPTADOS = ["csv", "gz", "zip"]
+FILAS_MUESTRA = 20
+TAMANO_CHUNK = 200_000
+LIMITE_VALORES_UNICOS = 50
+
+RUTA_BASE = Path(__file__).resolve().parent
+RUTA_TABLA_PRIMER_DIGITO = RUTA_BASE / "tabla2_benford_primer_digito_resultados.json"
+RUTA_TABLA_SEGUNDO_DIGITO = RUTA_BASE / "tabla3_benford_segundo_digito_resultados.json"
+RUTA_TABLA_COMPARACION = RUTA_BASE / "tabla4_comparacion_lavado_legitimas.json"
 
 
-def leer_csv_subido(archivo, sep: str, decimal: str, key_prefix: str = "") -> pd.DataFrame:
-    """Lee un archivo subido en formato .csv, .csv.gz o .zip (con uno o más CSV)."""
+# ------------------------- Lectura de archivos por chunks -------------------------
+
+def abrir_flujo_csv(archivo, key_prefix: str = "", zip_interno: str | None = None):
+    """Abre un flujo de lectura para un archivo .csv/.csv.gz/.zip sin cargarlo
+    completo en memoria. Devuelve (flujo, nombre_zip_interno); el flujo debe
+    cerrarse con `cerrar_flujo` tras su uso (salvo que sea el propio `archivo`)."""
     nombre = archivo.name.lower()
-    contenido = archivo.read()
+    archivo.seek(0)
 
     if nombre.endswith(".zip"):
-        with zipfile.ZipFile(io.BytesIO(contenido)) as zf:
-            csvs = [
-                n for n in zf.namelist()
-                if n.lower().endswith(".csv") and not n.startswith("__MACOSX")
-            ]
-            if not csvs:
-                raise ValueError("El archivo ZIP no contiene ningún archivo CSV.")
-            if len(csvs) == 1:
-                nombre_csv = csvs[0]
-            else:
-                nombre_csv = st.selectbox(
-                    "El ZIP contiene varios archivos CSV, elige cuál usar:",
-                    csvs,
-                    key=f"{key_prefix}_zip_select",
-                )
-            with zf.open(nombre_csv) as f:
-                return pd.read_csv(f, sep=sep, decimal=decimal)
-    elif nombre.endswith(".gz"):
-        with gzip.GzipFile(fileobj=io.BytesIO(contenido)) as f:
-            return pd.read_csv(f, sep=sep, decimal=decimal)
-    else:
-        return pd.read_csv(io.BytesIO(contenido), sep=sep, decimal=decimal)
+        zf = zipfile.ZipFile(archivo)
+        csvs = [
+            n for n in zf.namelist()
+            if n.lower().endswith(".csv") and not n.startswith("__MACOSX")
+        ]
+        if not csvs:
+            raise ValueError("El archivo ZIP no contiene ningún archivo CSV.")
+        if zip_interno is not None:
+            nombre_csv = zip_interno
+        elif len(csvs) == 1:
+            nombre_csv = csvs[0]
+        else:
+            nombre_csv = st.selectbox(
+                "El ZIP contiene varios archivos CSV, elige cuál usar:",
+                csvs,
+                key=f"{key_prefix}_zip_select",
+            )
+        return zf.open(nombre_csv), nombre_csv
+
+    if nombre.endswith(".gz"):
+        return gzip.GzipFile(fileobj=archivo), None
+
+    return archivo, None
+
+
+def cerrar_flujo(flujo, archivo):
+    if flujo is not archivo and hasattr(flujo, "close"):
+        flujo.close()
+
+
+def leer_muestra(archivo, sep: str, decimal: str, key_prefix: str = ""):
+    """Lee solo el encabezado y unas pocas filas de muestra (no el archivo
+    completo), para poblar los selectores de columnas."""
+    flujo, zip_interno = abrir_flujo_csv(archivo, key_prefix=key_prefix)
+    try:
+        muestra = pd.read_csv(flujo, sep=sep, decimal=decimal, nrows=FILAS_MUESTRA)
+    finally:
+        cerrar_flujo(flujo, archivo)
+    return muestra, zip_interno
+
+
+def valores_unicos_columna(archivo, sep, decimal, columna, key_prefix, zip_interno, limite=LIMITE_VALORES_UNICOS):
+    """Escanea el archivo por chunks para obtener los valores únicos de una
+    columna, sin cargar el archivo completo en memoria.
+
+    Deliberadamente sin `st.cache_data`: el hashing de Streamlit sobre un
+    `UploadedFile` grande puede terminar copiando el archivo completo en
+    memoria para calcular la clave de caché, lo cual sería contraproducente
+    aquí. Volver a escanear una sola columna por chunks es barato."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    valores = set()
+    try:
+        with pd.read_csv(flujo, sep=sep, decimal=decimal, usecols=[columna], chunksize=TAMANO_CHUNK) as lector:
+            for chunk in lector:
+                valores.update(chunk[columna].dropna().unique().tolist())
+                del chunk
+                if len(valores) > limite:
+                    break
+    finally:
+        cerrar_flujo(flujo, archivo)
+    gc.collect()
+    return valores
+
+
+def procesar_montos_en_chunks(archivo, sep, decimal, col_monto, key_prefix, zip_interno):
+    """Procesa el archivo completo por chunks, extrayendo solo la columna de
+    montos y acumulando únicamente conteos de dígitos."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    acumulador = AcumuladorDigitos(UMBRAL_MINIMO)
+    try:
+        with pd.read_csv(flujo, sep=sep, decimal=decimal, usecols=[col_monto], chunksize=TAMANO_CHUNK) as lector:
+            for chunk in lector:
+                acumulador.procesar_chunk(chunk[col_monto])
+                del chunk
+    finally:
+        cerrar_flujo(flujo, archivo)
+
+    resultado = acumulador.finalizar()
+    n_original = acumulador.n_original
+    del acumulador
+    gc.collect()
+    return resultado, n_original
+
+
+def procesar_segmentado_en_chunks(archivo, sep, decimal, col_monto, col_etiqueta, valor_riesgo, key_prefix, zip_interno):
+    """Procesa el archivo completo por chunks, separando legítimas vs. riesgo
+    y acumulando únicamente conteos de dígitos para cada grupo."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    acum_global = AcumuladorDigitos(UMBRAL_MINIMO)
+    acum_legitimas = AcumuladorDigitos(UMBRAL_MINIMO)
+    acum_riesgo = AcumuladorDigitos(UMBRAL_MINIMO)
+    try:
+        with pd.read_csv(
+            flujo, sep=sep, decimal=decimal, usecols=[col_monto, col_etiqueta], chunksize=TAMANO_CHUNK
+        ) as lector:
+            for chunk in lector:
+                acum_global.procesar_chunk(chunk[col_monto])
+                es_riesgo = chunk[col_etiqueta] == valor_riesgo
+                acum_riesgo.procesar_chunk(chunk.loc[es_riesgo, col_monto])
+                acum_legitimas.procesar_chunk(chunk.loc[~es_riesgo, col_monto])
+                del chunk, es_riesgo
+    finally:
+        cerrar_flujo(flujo, archivo)
+
+    resultado_global = acum_global.finalizar()
+    resultado_legitimas = acum_legitimas.finalizar() if acum_legitimas.n_valido_primer > 0 else None
+    resultado_riesgo = acum_riesgo.finalizar() if acum_riesgo.n_valido_primer > 0 else None
+    n_original = acum_global.n_original
+
+    del acum_global, acum_legitimas, acum_riesgo
+    gc.collect()
+    return resultado_global, resultado_legitimas, resultado_riesgo, n_original
 
 
 def incremento_pct(base: float, nuevo: float) -> float:
@@ -66,6 +169,8 @@ def incremento_pct(base: float, nuevo: float) -> float:
         return np.nan
     return (nuevo - base) / base * 100
 
+
+# ------------------------- Visualización -------------------------
 
 def grafico_comparativo(tabla: pd.DataFrame, titulo: str, x_titulo: str):
     fig = go.Figure()
@@ -181,20 +286,23 @@ def mostrar_analisis(resultado: dict):
             )
 
 
+# ------------------------- Modo: comparación de subconjuntos -------------------------
+
 def modo_comparacion_subconjuntos(separador: str, decimal: str):
     st.header("🧪 Comparación de subconjuntos")
     st.markdown(
         "Carga por separado hasta tres conjuntos de transacciones (cada uno en "
         "**CSV**, **CSV.GZ** o **ZIP**) para comparar su conformidad con la Ley "
         "de Benford. Se necesitan al menos **dos** conjuntos cargados para "
-        "generar la comparación."
+        "generar la comparación. Cada archivo se procesa por chunks, sin "
+        "cargarlo completo en memoria."
     )
 
     slots = ["Conjunto Válido (global)", "Transacciones Legítimas", "Transacciones de Lavado"]
     claves = ["valido", "legitimas", "lavado"]
 
     columnas_layout = st.columns(3)
-    subconjuntos = {}
+    config_subconjuntos = {}
 
     for columna, nombre, clave in zip(columnas_layout, slots, claves):
         with columna:
@@ -205,33 +313,55 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
             if archivo is None:
                 continue
             try:
-                df_sub = leer_csv_subido(archivo, separador, decimal, key_prefix=clave)
+                muestra, zip_interno = leer_muestra(archivo, separador, decimal, key_prefix=clave)
             except Exception as e:
                 st.error(f"No se pudo leer el archivo: {e}")
                 continue
-            if df_sub.empty:
+            if muestra.empty:
                 st.error("El archivo está vacío.")
                 continue
 
             col_monto = st.selectbox(
-                "Columna de montos", list(df_sub.columns), key=f"col_monto_{clave}"
+                "Columna de montos", list(muestra.columns), key=f"col_monto_{clave}"
             )
-            montos = preprocesar_montos(df_sub[col_monto], UMBRAL_MINIMO)
-            st.caption(f"{len(montos):,} registros válidos de {len(df_sub):,} totales.")
+            st.caption(f"Vista previa de {len(muestra)} fila(s). El total se calculará al ejecutar.")
 
-            if len(montos) == 0:
-                st.warning("No quedan registros válidos tras el preprocesamiento.")
-                continue
-            if len(montos) < 30:
-                st.warning("Menos de 30 observaciones válidas: resultados poco confiables.")
+            config_subconjuntos[nombre] = {
+                "archivo": archivo,
+                "col_monto": col_monto,
+                "zip_interno": zip_interno,
+                "clave": clave,
+            }
 
-            subconjuntos[nombre] = analisis_completo(montos)
-
-    if len(subconjuntos) < 2:
+    if len(config_subconjuntos) < 2:
         st.info("Carga al menos dos conjuntos para ver la tabla comparativa.")
         return
 
+    ejecutar = st.button("🚀 Ejecutar comparación", type="primary")
+    if not ejecutar:
+        return
+
     st.markdown("---")
+    subconjuntos = {}
+    with st.spinner("Procesando archivos por chunks (esto puede tardar para archivos grandes)..."):
+        for nombre, cfg in config_subconjuntos.items():
+            resultado, n_original = procesar_montos_en_chunks(
+                cfg["archivo"], separador, decimal, cfg["col_monto"],
+                key_prefix=cfg["clave"], zip_interno=cfg["zip_interno"],
+            )
+            n_validos = resultado["primer_digito"]["n"]
+            st.caption(f"**{nombre}**: {n_validos:,} registros válidos de {n_original:,} totales.")
+            if n_validos == 0:
+                st.warning(f"'{nombre}': no quedan registros válidos tras el preprocesamiento.")
+                continue
+            if n_validos < 30:
+                st.warning(f"'{nombre}': menos de 30 observaciones válidas ({n_validos}); resultados poco confiables.")
+            subconjuntos[nombre] = resultado
+
+    if len(subconjuntos) < 2:
+        st.info("Se necesitan al menos dos conjuntos con datos válidos para comparar.")
+        return
+
     st.subheader("📊 Tabla comparativa de conformidad")
 
     def resaltar_lavado(fila):
@@ -313,32 +443,451 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
             mostrar_analisis(resultado)
 
 
+# ------------------------- Modo: resultados de la tesis (JSON precalculados) -------------------------
+
+def formato_es(valor, decimales: int = 2) -> str:
+    """Formatea un número con convención española: punto para miles, coma
+    para decimales (ej. 10736.4 -> '10.736,4')."""
+    if valor is None or (isinstance(valor, float) and np.isnan(valor)):
+        return "—"
+    texto = f"{valor:,.{decimales}f}"
+    return texto.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def formato_es_pct(valor, decimales: int = 1) -> str:
+    """Formatea un porcentaje con signo y convención española (ej. 1292.7 -> '+1.292,7%')."""
+    if valor is None or (isinstance(valor, float) and np.isnan(valor)):
+        return "—"
+    texto = formato_es(valor, decimales)
+    if valor >= 0 and not texto.startswith("+"):
+        texto = f"+{texto}"
+    return f"{texto}%"
+
+
+def formato_es_pvalor(p_valor) -> str:
+    if p_valor is None or (isinstance(p_valor, float) and np.isnan(p_valor)):
+        return "—"
+    if p_valor >= 0.00001:
+        return formato_es(p_valor, 5)
+    return f"{p_valor:.2e}".replace(".", ",")
+
+
+EJEMPLO_TABLA_PRIMER_DIGITO = {
+    "n_valido": 4929615,
+    "mad": 0.004913,
+    "chi2": 10736.4,
+    "grados_libertad": 8,
+    "p_valor": 0.0,
+    "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
+    "resultados": [
+        {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
+        {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300},
+        "... (un objeto por cada dígito del 1 al 9)",
+    ],
+}
+
+EJEMPLO_TABLA_SEGUNDO_DIGITO = {
+    "n_valido": 4927977,
+    "mad": 0.000324,
+    "chi2": 109.9,
+    "grados_libertad": 9,
+    "p_valor": 0.0,
+    "interpretacion_mad": "Conformidad aceptable con Benford",
+    "resultados": [
+        {"digito": 0, "observado_pct": 12.00, "benford_pct": 11.968, "diferencia_abs": 0.032, "z_score": 0.9, "n_observado": 591300},
+        {"digito": 1, "observado_pct": 11.40, "benford_pct": 11.389, "diferencia_abs": 0.011, "z_score": 0.3, "n_observado": 561800},
+        "... (un objeto por cada dígito del 0 al 9)",
+    ],
+}
+
+EJEMPLO_TABLA_COMPARACION = {
+    "legitimas": {
+        "primer_digito": {
+            "n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+        },
+        "segundo_digito": {
+            "n_valido": 4900000, "mad": 0.000324, "chi2": 100.0, "p_valor": 0.5,
+            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+        },
+    },
+    "lavado": {
+        "primer_digito": {
+            "n_valido": 29615, "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+        },
+        "segundo_digito": {
+            "n_valido": 27977, "mad": 0.004509, "chi2": 200.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+        },
+    },
+    "incremento_porcentual": {
+        "delta_mad_1d_pct": 320.6,
+        "delta_mad_2d_pct": 1292.7,
+    },
+}
+
+
+def cargar_json(ruta: Path):
+    """Carga un archivo JSON de resultados. Devuelve (datos, error); error es
+    None si la carga fue exitosa."""
+    if not ruta.exists():
+        return None, "no_encontrado"
+    try:
+        with open(ruta, "r", encoding="utf-8") as f:
+            return json.load(f), None
+    except (json.JSONDecodeError, OSError) as e:
+        return None, str(e)
+
+
+def placeholder_json_faltante(nombre_archivo: str, ejemplo: dict, error: str):
+    if error == "no_encontrado":
+        st.warning(f"⚠️ No se encontró el archivo **`{nombre_archivo}`** en el repositorio.")
+    else:
+        st.error(f"⚠️ No se pudo leer **`{nombre_archivo}`**: {error}")
+    st.markdown(
+        f"Para mostrar esta sección, agrega un archivo llamado `{nombre_archivo}` "
+        "en la raíz del repositorio (junto a `app.py`) con la estructura indicada abajo, "
+        "y vuelve a cargar la página."
+    )
+    with st.expander(f"Ver esquema JSON esperado para `{nombre_archivo}`"):
+        st.code(json.dumps(ejemplo, indent=2, ensure_ascii=False), language="json")
+
+
+def tabla_desde_resultados(resultados):
+    """Construye un DataFrame a partir de la lista 'resultados' del JSON,
+    usando los campos (observado_pct, benford_pct, diferencia_abs, z_score,
+    n_observado) tal cual vienen, sin recalcular nada."""
+    filas = []
+    for item in resultados:
+        if not isinstance(item, dict):
+            continue
+        filas.append({
+            "digito": item["digito"],
+            "observado_pct": item["observado_pct"],
+            "benford_pct": item["benford_pct"],
+            "diferencia_abs": item.get("diferencia_abs"),
+            "z_score": item.get("z_score"),
+            "n_observado": item.get("n_observado"),
+        })
+    return pd.DataFrame(filas)
+
+
+def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
+    """Igual que grafico_comparativo, pero usando directamente los porcentajes
+    observado_pct/benford_pct del JSON (sin convertirlos a fracción)."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=tabla["digito"], y=tabla["observado_pct"],
+        name="Observado (%)", marker_color="#1f77b4",
+    ))
+    fig.add_trace(go.Scatter(
+        x=tabla["digito"], y=tabla["benford_pct"],
+        name="Benford esperado (%)", mode="lines+markers",
+        line=dict(color="#d62728", width=2), marker=dict(size=7),
+    ))
+    fig.update_layout(
+        title=titulo,
+        xaxis_title=x_titulo,
+        yaxis_title="Frecuencia (%)",
+        xaxis=dict(tickmode="linear"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        bargap=0.2,
+        height=430,
+    )
+    return fig
+
+
+def grafico_zscore_tesis(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
+    """Igual que grafico_zscore, pero usando el z_score ya provisto por el JSON."""
+    colores = ["#d62728" if (pd.notna(z) and z > umbral) else "#2ca02c" for z in tabla["z_score"]]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=tabla["digito"], y=tabla["z_score"], marker_color=colores, name="Z-score"))
+    fig.add_hline(y=umbral, line_dash="dash", line_color="gray",
+                  annotation_text=f"Umbral crítico (±{umbral})")
+    fig.update_layout(
+        title="Z-score por dígito (según JSON)",
+        xaxis_title=x_titulo,
+        yaxis_title="Z-score",
+        xaxis=dict(tickmode="linear"),
+        height=350,
+    )
+    return fig
+
+
+def render_metricas_digito(datos: dict, funcion_veredicto=None):
+    n_valido = datos["n_valido"]
+    mad = datos["mad"]
+    chi2 = datos["chi2"]
+    p_valor = datos["p_valor"]
+    gl = datos.get("grados_libertad")
+    etiqueta_chi2 = f"Chi-cuadrado (gl={gl})" if gl is not None else "Chi-cuadrado"
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("N (válidos)", formato_es(n_valido, 0))
+    c2.metric("MAD", formato_es(mad, 6))
+    c3.metric(etiqueta_chi2, formato_es(chi2, 1))
+    c4.metric("Valor p", formato_es_pvalor(p_valor))
+
+    interpretacion = datos.get("interpretacion_mad")
+    nivel = None
+    if funcion_veredicto is not None:
+        veredicto_calculado, nivel = funcion_veredicto(mad)
+        if not interpretacion:
+            interpretacion = veredicto_calculado
+
+    if interpretacion:
+        mensaje = f"**Interpretación del MAD:** {interpretacion}"
+        if nivel == "success":
+            st.success(mensaje)
+        elif nivel == "info":
+            st.info(mensaje)
+        elif nivel == "warning":
+            st.warning(mensaje)
+        elif nivel == "error":
+            st.error(mensaje)
+        else:
+            st.write(mensaje)
+
+
+def render_grafico_digito(datos: dict, titulo_figura: str, x_titulo: str, nombre_tabla: str):
+    if "resultados" not in datos:
+        st.error(f"Al archivo de **{nombre_tabla}** le falta el campo 'resultados'.")
+        return
+    try:
+        tabla = tabla_desde_resultados(datos["resultados"])
+    except (KeyError, TypeError) as e:
+        st.error(
+            "Cada elemento de 'resultados' debe incluir 'digito', 'observado_pct' "
+            f"y 'benford_pct' (falta {e})."
+        )
+        return
+
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.plotly_chart(grafico_comparativo_tesis(tabla, titulo_figura, x_titulo), use_container_width=True)
+    with c2:
+        if tabla["z_score"].notna().any():
+            st.plotly_chart(grafico_zscore_tesis(tabla, x_titulo), use_container_width=True)
+
+    with st.expander(f"Ver tabla de datos — {nombre_tabla}"):
+        tabla_mostrar = tabla.rename(columns={
+            "digito": "Dígito", "observado_pct": "Observado (%)", "benford_pct": "Benford (%)",
+            "diferencia_abs": "Diferencia abs.", "z_score": "Z-score", "n_observado": "N observado",
+        })
+        st.dataframe(
+            tabla_mostrar.style.format({
+                "Observado (%)": lambda v: formato_es(v, 4),
+                "Benford (%)": lambda v: formato_es(v, 4),
+                "Diferencia abs.": lambda v: formato_es(v, 4) if pd.notna(v) else "—",
+                "Z-score": lambda v: formato_es(v, 3) if pd.notna(v) else "—",
+                "N observado": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            }),
+            use_container_width=True,
+        )
+
+
+def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_titulo: str, funcion_veredicto):
+    campos_requeridos = ["n_valido", "mad", "chi2", "p_valor", "resultados"]
+    faltantes = [c for c in campos_requeridos if c not in datos]
+    if faltantes:
+        st.error(f"Al archivo de **{nombre_tabla}** le faltan los campos: {', '.join(faltantes)}.")
+        return
+    render_metricas_digito(datos, funcion_veredicto)
+    render_grafico_digito(datos, titulo_figura, x_titulo, nombre_tabla)
+
+
+def render_tabla_comparacion(datos: dict):
+    campos_requeridos = ["legitimas", "lavado", "incremento_porcentual"]
+    faltantes = [c for c in campos_requeridos if c not in datos]
+    if faltantes:
+        st.error(f"Al archivo de comparación le faltan los campos: {', '.join(faltantes)}.")
+        return
+
+    claves_incremento = {"primer_digito": "delta_mad_1d_pct", "segundo_digito": "delta_mad_2d_pct"}
+    faltan_inc = [v for v in claves_incremento.values() if v not in datos["incremento_porcentual"]]
+    if faltan_inc:
+        st.error(f"A 'incremento_porcentual' le falta: {', '.join(faltan_inc)}.")
+        return
+
+    etiquetas = {"primer_digito": "Primer dígito", "segundo_digito": "Segundo dígito"}
+    for grupo in ["legitimas", "lavado"]:
+        faltan_pos = [p for p in etiquetas if p not in datos[grupo]]
+        if faltan_pos:
+            st.error(f"A la sección '{grupo}' le falta: {', '.join(faltan_pos)}.")
+            return
+
+    incremento = datos["incremento_porcentual"]
+    filas = []
+    mads_leg = []
+    mads_lav = []
+
+    for clave, etiqueta in etiquetas.items():
+        leg = datos["legitimas"][clave]
+        lav = datos["lavado"][clave]
+        mads_leg.append(leg["mad"])
+        mads_lav.append(lav["mad"])
+        inc = incremento[claves_incremento[clave]]
+        filas.append({
+            "Posición": etiqueta,
+            "N Legítimas": leg.get("n_valido"),
+            "MAD Legítimas": leg["mad"],
+            "χ² Legítimas": leg.get("chi2"),
+            "N Lavado": lav.get("n_valido"),
+            "MAD Lavado": lav["mad"],
+            "χ² Lavado": lav.get("chi2"),
+            "Δ% MAD": inc,
+        })
+
+    tabla_resumen = pd.DataFrame(filas)
+    st.dataframe(
+        tabla_resumen.style.format({
+            "N Legítimas": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            "MAD Legítimas": lambda v: formato_es(v, 6),
+            "χ² Legítimas": lambda v: formato_es(v, 1) if pd.notna(v) else "—",
+            "N Lavado": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            "MAD Lavado": lambda v: formato_es(v, 6),
+            "χ² Lavado": lambda v: formato_es(v, 1) if pd.notna(v) else "—",
+            "Δ% MAD": lambda v: formato_es_pct(v, 1),
+        }),
+        use_container_width=True,
+    )
+
+    fig = go.Figure()
+    posiciones = [etiquetas["primer_digito"], etiquetas["segundo_digito"]]
+    fig.add_trace(go.Bar(
+        x=posiciones, y=mads_leg, name="Legítimas", marker_color="#2ca02c",
+        text=[formato_es(v, 6) for v in mads_leg], textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        x=posiciones, y=mads_lav, name="Lavado", marker_color="#d62728",
+        text=[formato_es(v, 6) for v in mads_lav], textposition="outside",
+    ))
+    for i, clave in enumerate(["primer_digito", "segundo_digito"]):
+        inc = incremento[claves_incremento[clave]]
+        fig.add_annotation(
+            x=posiciones[i], y=max(mads_leg[i], mads_lav[i]),
+            text=formato_es_pct(inc, 1), showarrow=True, arrowhead=2, ay=-40,
+            font=dict(color="#d62728", size=14),
+        )
+    fig.update_layout(
+        title="Figura 3: MAD — Legítimas vs. Lavado",
+        yaxis_title="MAD",
+        barmode="group",
+        height=430,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    for clave, etiqueta in etiquetas.items():
+        inc = incremento[claves_incremento[clave]]
+        if inc > 0:
+            st.error(
+                f"🚨 En **{etiqueta.lower()}**, el MAD de **Lavado** es un **{formato_es_pct(inc, 1)}** "
+                "más alto que el de **Legítimas** — señal de alerta de posible manipulación."
+            )
+        else:
+            st.info(
+                f"En {etiqueta.lower()}, el MAD de Lavado no es mayor que el de "
+                f"Legítimas ({formato_es_pct(inc, 1)})."
+            )
+
+    with st.expander("Ver detalle por dígito — Legítimas vs. Lavado"):
+        for clave, etiqueta in etiquetas.items():
+            st.markdown(f"**{etiqueta}**")
+            col_leg, col_lav = st.columns(2)
+            with col_leg:
+                st.caption("Legítimas")
+                render_metricas_digito(datos["legitimas"][clave])
+                render_grafico_digito(
+                    datos["legitimas"][clave], f"{etiqueta} — Legítimas", etiqueta,
+                    f"{etiqueta} (Legítimas)",
+                )
+            with col_lav:
+                st.caption("Lavado")
+                render_metricas_digito(datos["lavado"][clave])
+                render_grafico_digito(
+                    datos["lavado"][clave], f"{etiqueta} — Lavado", etiqueta,
+                    f"{etiqueta} (Lavado)",
+                )
+
+
+def modo_resultados_tesis():
+    st.header("🎓 Resultados de la tesis")
+    st.markdown(
+        "Resultados **pre-calculados** del estudio, leídos directamente de archivos "
+        "JSON incluidos en el repositorio (no se recalculan en la app)."
+    )
+
+    datos_primer, error_primer = cargar_json(RUTA_TABLA_PRIMER_DIGITO)
+    st.subheader("Tabla 15 — Análisis de primer dígito (global)")
+    if datos_primer is None:
+        placeholder_json_faltante(RUTA_TABLA_PRIMER_DIGITO.name, EJEMPLO_TABLA_PRIMER_DIGITO, error_primer)
+    else:
+        render_tabla_digito(
+            datos_primer, "Tabla 15 (primer dígito)",
+            "Figura 1: Primer dígito — Observado vs. Benford", "Primer dígito",
+            veredicto_mad_primer_digito,
+        )
+
+    st.markdown("---")
+    datos_segundo, error_segundo = cargar_json(RUTA_TABLA_SEGUNDO_DIGITO)
+    st.subheader("Tabla 16 — Análisis de segundo dígito (global)")
+    if datos_segundo is None:
+        placeholder_json_faltante(RUTA_TABLA_SEGUNDO_DIGITO.name, EJEMPLO_TABLA_SEGUNDO_DIGITO, error_segundo)
+    else:
+        render_tabla_digito(
+            datos_segundo, "Tabla 16 (segundo dígito)",
+            "Figura 2: Segundo dígito — Observado vs. Benford", "Segundo dígito",
+            veredicto_mad_segundo_digito,
+        )
+
+    st.markdown("---")
+    datos_comp, error_comp = cargar_json(RUTA_TABLA_COMPARACION)
+    st.subheader("Tabla 17 — Comparación: Legítimas vs. Lavado")
+    if datos_comp is None:
+        placeholder_json_faltante(RUTA_TABLA_COMPARACION.name, EJEMPLO_TABLA_COMPARACION, error_comp)
+    else:
+        render_tabla_comparacion(datos_comp)
+
+
 # ------------------------- Interfaz principal -------------------------
 
 st.title("🔍 Analizador Forense de Benford")
 st.markdown(
     "Herramienta de auditoría forense para detectar anomalías en transacciones "
     "financieras aplicando la **Ley de Benford** con la metodología de "
-    "**Mark Nigrini** (análisis de primer y segundo dígito, MAD, Chi-cuadrado y Z-scores)."
+    "**Mark Nigrini** (análisis de primer y segundo dígito, MAD, Chi-cuadrado y Z-scores). "
+    "Los archivos se procesan por chunks para soportar CSV de gran tamaño con bajo consumo de memoria."
 )
+
+MODO_TESIS = "🎓 Resultados de la tesis"
+MODO_ARCHIVO_UNICO = "Archivo único (con etiqueta opcional)"
+MODO_COMPARACION = "Comparación de subconjuntos"
 
 with st.sidebar:
     st.header("⚙️ Configuración")
     modo = st.radio(
         "Modo de análisis",
-        ["Archivo único (con etiqueta opcional)", "Comparación de subconjuntos"],
+        [MODO_TESIS, MODO_ARCHIVO_UNICO, MODO_COMPARACION],
     )
-    separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
-    decimal = st.selectbox("Separador decimal", [".", ","], index=0)
 
+    separador = decimal = None
     archivo = None
-    if modo == "Archivo único (con etiqueta opcional)":
+    if modo != MODO_TESIS:
+        separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
+        decimal = st.selectbox("Separador decimal", [".", ","], index=0)
+
+    if modo == MODO_ARCHIVO_UNICO:
         archivo = st.file_uploader(
             "Sube un archivo de transacciones (CSV, CSV.GZ o ZIP)",
             type=TIPOS_ARCHIVO_ACEPTADOS,
         )
 
-if modo == "Comparación de subconjuntos":
+if modo == MODO_TESIS:
+    modo_resultados_tesis()
+    st.stop()
+
+if modo == MODO_COMPARACION:
     modo_comparacion_subconjuntos(separador, decimal)
     st.stop()
 
@@ -351,25 +900,31 @@ if archivo is None:
         - Debe incluir una columna numérica con los **montos** de las transacciones.
         - Opcionalmente, una columna binaria que etiquete cada transacción como
           *legítima* o *de riesgo/fraude* (por ejemplo: 0/1, "Sí"/"No", "Riesgo"/"Legítima").
+        - Puede tener millones de filas: se lee y procesa por chunks, sin
+          cargarlo completo en memoria.
         """
     )
     st.stop()
 
 try:
-    df = leer_csv_subido(archivo, separador, decimal, key_prefix="unico")
+    muestra, zip_interno = leer_muestra(archivo, separador, decimal, key_prefix="unico")
 except Exception as e:
     st.error(f"No se pudo leer el archivo: {e}")
     st.stop()
 
-if df.empty:
-    st.error("El archivo CSV está vacío.")
+if muestra.empty:
+    st.error("El archivo está vacío.")
     st.stop()
 
 st.subheader("Vista previa de los datos")
-st.dataframe(df.head(20), use_container_width=True)
-st.caption(f"El archivo contiene {len(df):,} filas y {len(df.columns)} columnas.")
+st.dataframe(muestra, use_container_width=True)
+st.caption(
+    f"Mostrando las primeras {len(muestra):,} fila(s) como vista previa (el archivo "
+    "no se carga completo en memoria; el número total de registros se calculará "
+    "al ejecutar el análisis)."
+)
 
-columnas = list(df.columns)
+columnas = list(muestra.columns)
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -381,16 +936,21 @@ with col_b:
     )
     col_etiqueta = None if col_etiqueta == "(Ninguna)" else col_etiqueta
 
+valor_riesgo = None
 if col_etiqueta:
-    valores_unicos = df[col_etiqueta].dropna().unique()
+    with st.spinner("Escaneando valores únicos de la columna de etiqueta..."):
+        valores_unicos = valores_unicos_columna(
+            archivo, separador, decimal, col_etiqueta, "unico", zip_interno
+        )
     if len(valores_unicos) != 2:
         st.warning(
-            f"La columna '{col_etiqueta}' tiene {len(valores_unicos)} valores únicos. "
+            f"La columna '{col_etiqueta}' tiene {len(valores_unicos)}"
+            f"{'+' if len(valores_unicos) > LIMITE_VALORES_UNICOS else ''} valores únicos. "
             "Se espera una columna binaria (2 valores). Elige cuál representa 'riesgo'."
         )
     valor_riesgo = st.selectbox(
         "¿Qué valor de la columna de etiqueta representa transacciones de RIESGO?",
-        sorted(valores_unicos.tolist(), key=str),
+        sorted(valores_unicos, key=str),
     )
 
 ejecutar = st.button("🚀 Ejecutar análisis de Benford", type="primary")
@@ -398,34 +958,41 @@ ejecutar = st.button("🚀 Ejecutar análisis de Benford", type="primary")
 if not ejecutar:
     st.stop()
 
-# --- Preprocesamiento ---
-montos_originales = df[col_monto]
-montos = preprocesar_montos(montos_originales, UMBRAL_MINIMO)
-
-n_original = len(montos_originales)
-n_excluidos = n_original - len(montos)
-
 st.markdown("---")
+with st.spinner("Procesando archivo por chunks (esto puede tardar para archivos grandes)..."):
+    if col_etiqueta:
+        resultado_global, resultado_legitimas, resultado_riesgo, n_original = procesar_segmentado_en_chunks(
+            archivo, separador, decimal, col_monto, col_etiqueta, valor_riesgo,
+            key_prefix="unico", zip_interno=zip_interno,
+        )
+    else:
+        resultado_global, n_original = procesar_montos_en_chunks(
+            archivo, separador, decimal, col_monto, key_prefix="unico", zip_interno=zip_interno,
+        )
+        resultado_legitimas = resultado_riesgo = None
+
+n_validos = resultado_global["primer_digito"]["n"]
+n_excluidos = n_original - n_validos
+
 st.subheader("🧹 Preprocesamiento de datos")
 c1, c2, c3 = st.columns(3)
 c1.metric("Registros totales", f"{n_original:,}")
 c2.metric(f"Excluidos (< USD {UMBRAL_MINIMO:.2f} o no numéricos)", f"{n_excluidos:,}")
-c3.metric("Registros válidos para el análisis", f"{len(montos):,}")
+c3.metric("Registros válidos para el análisis", f"{n_validos:,}")
 
-if len(montos) < 30:
+if n_validos < 30:
     st.warning(
         "El número de observaciones válidas es muy bajo (< 30). "
         "Los resultados estadísticos pueden no ser confiables."
     )
 
-if len(montos) == 0:
+if n_validos == 0:
     st.error("No quedan registros válidos tras el preprocesamiento.")
     st.stop()
 
 # --- Análisis global ---
 st.markdown("---")
 st.header("📈 Análisis global (toda la muestra)")
-resultado_global = analisis_completo(montos)
 mostrar_analisis(resultado_global)
 
 # --- Análisis segmentado (legítimas vs. riesgo) ---
@@ -433,13 +1000,10 @@ if col_etiqueta:
     st.markdown("---")
     st.header("⚖️ Análisis segmentado: legítimas vs. riesgo")
 
-    df_valido = df.loc[montos.index]
-    es_riesgo = df_valido[col_etiqueta] == valor_riesgo
+    n_legitimas = resultado_legitimas["primer_digito"]["n"] if resultado_legitimas else 0
+    n_riesgo = resultado_riesgo["primer_digito"]["n"] if resultado_riesgo else 0
 
-    montos_riesgo = montos[es_riesgo]
-    montos_legitimas = montos[~es_riesgo]
-
-    if len(montos_riesgo) < 10 or len(montos_legitimas) < 10:
+    if n_riesgo < 10 or n_legitimas < 10:
         st.warning(
             "Uno de los dos grupos tiene menos de 10 observaciones válidas; "
             "los resultados segmentados pueden no ser estadísticamente confiables."
@@ -447,25 +1011,15 @@ if col_etiqueta:
 
     col_leg, col_riesgo = st.columns(2)
 
-    if len(montos_legitimas) > 0:
-        resultado_legitimas = analisis_completo(montos_legitimas)
-    else:
-        resultado_legitimas = None
-
-    if len(montos_riesgo) > 0:
-        resultado_riesgo = analisis_completo(montos_riesgo)
-    else:
-        resultado_riesgo = None
-
     with col_leg:
-        st.subheader(f"✅ Legítimas (n = {len(montos_legitimas):,})")
+        st.subheader(f"✅ Legítimas (n = {n_legitimas:,})")
         if resultado_legitimas:
             mostrar_analisis(resultado_legitimas)
         else:
             st.info("Sin observaciones en este grupo.")
 
     with col_riesgo:
-        st.subheader(f"🚨 Riesgo (n = {len(montos_riesgo):,})")
+        st.subheader(f"🚨 Riesgo (n = {n_riesgo:,})")
         if resultado_riesgo:
             mostrar_analisis(resultado_riesgo)
         else:
