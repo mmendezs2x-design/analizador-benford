@@ -4,10 +4,32 @@ Aplicación web construida con **Streamlit** para la detección de anomalías en
 transacciones financieras aplicando la **Ley de Benford**, siguiendo la
 metodología de auditoría forense de **Mark Nigrini**.
 
-Al abrir la aplicación, la vista por defecto es **"🎓 Resultados de la
+Al abrir la aplicación, la vista por defecto es **"Resultados de la
 tesis"**, que muestra resultados ya calculados leídos desde archivos JSON
 incluidos en el repositorio. El análisis en vivo sobre archivos CSV sigue
 disponible en los otros dos modos del panel lateral.
+
+## Diseño visual
+
+La interfaz usa un tema oscuro (configurado en `.streamlit/config.toml`,
+sección `[theme]`) con un único color de acento (cian eléctrico) sobre
+fondo azul-grafito, pensado para verse como una plataforma profesional de
+detección de fraude:
+
+- Las métricas (N, MAD, Chi-cuadrado, valor p) se muestran como tarjetas
+  KPI con bordes sutiles redondeados.
+- El veredicto de conformidad se muestra como un badge semáforo (verde =
+  conforme, ámbar = marginal, rojo = no conforme).
+- Los hallazgos de la Tabla 17 y de los análisis segmentados se destacan
+  en tarjetas "Hallazgo clave".
+- Los gráficos Plotly comparten una plantilla oscura coherente (fondo
+  transparente, azul/cian para lo observado, línea clara para Benford,
+  rojo reservado para alertas).
+- El pie de página incluye el título de la tesis, autores, universidad y
+  año.
+
+Todo esto es únicamente estético: no modifica los cálculos estadísticos
+ni la forma en que se leen los archivos CSV o JSON.
 
 ## Funcionalidades
 
