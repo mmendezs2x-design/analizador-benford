@@ -55,17 +55,18 @@ def extraer_segundo_digito(montos: pd.Series):
 
 # --- Cálculo de frecuencias y estadísticos ---
 
-def tabla_frecuencias(digitos: pd.Series, digitos_posibles, distribucion_teorica):
-    n = len(digitos)
-    conteo = digitos.value_counts().reindex(digitos_posibles, fill_value=0).sort_index()
-    freq_observada = conteo / n if n > 0 else conteo * 0.0
-    freq_esperada = pd.Series({d: distribucion_teorica[d] for d in digitos_posibles})
+def tabla_desde_conteo(conteo, digitos_posibles, distribucion_teorica, n: int):
+    """Construye la tabla de frecuencias y Z-scores a partir de conteos ya acumulados
+    (por ejemplo, sumados de forma incremental a través de varios chunks)."""
+    conteo = np.asarray(conteo, dtype=np.int64)
+    freq_observada = conteo / n if n > 0 else conteo.astype(float)
+    freq_esperada = np.array([distribucion_teorica[d] for d in digitos_posibles])
 
     tabla = pd.DataFrame({
-        "digito": digitos_posibles,
-        "conteo_observado": conteo.values,
-        "freq_observada": freq_observada.values,
-        "freq_esperada": freq_esperada.values,
+        "digito": list(digitos_posibles),
+        "conteo_observado": conteo,
+        "freq_observada": freq_observada,
+        "freq_esperada": freq_esperada,
     })
     tabla["conteo_esperado"] = tabla["freq_esperada"] * n
 
@@ -78,7 +79,13 @@ def tabla_frecuencias(digitos: pd.Series, digitos_posibles, distribucion_teorica
         tabla["z_score"] = diff / denom
 
     tabla["z_score"] = tabla["z_score"].replace([np.inf, -np.inf], np.nan).fillna(0)
-    return tabla, n
+    return tabla
+
+
+def tabla_frecuencias(digitos: pd.Series, digitos_posibles, distribucion_teorica):
+    n = len(digitos)
+    conteo = digitos.value_counts().reindex(digitos_posibles, fill_value=0).sort_index().values
+    return tabla_desde_conteo(conteo, digitos_posibles, distribucion_teorica, n), n
 
 
 def calcular_mad(tabla: pd.DataFrame):
@@ -118,40 +125,85 @@ def veredicto_mad_segundo_digito(mad: float):
         return "No conformidad: asociación grave (posible anomalía)", "error"
 
 
+class AcumuladorDigitos:
+    """Acumula conteos de primer y segundo dígito de forma incremental (por chunks),
+    sin retener nunca la serie completa de montos en memoria.
+
+    Uso: se llama `procesar_chunk` una vez por cada trozo crudo leído del archivo
+    (por ejemplo, con `pandas.read_csv(..., chunksize=...)`), y al final `finalizar()`
+    produce el mismo resultado que si se hubiera analizado el archivo completo de una vez.
+    """
+
+    def __init__(self, umbral_minimo: float = 1.0):
+        self.umbral_minimo = umbral_minimo
+        self.conteo_primer = np.zeros(len(PRIMER_DIGITO), dtype=np.int64)
+        self.conteo_segundo = np.zeros(len(SEGUNDO_DIGITO), dtype=np.int64)
+        self.n_valido_primer = 0
+        self.n_valido_segundo = 0
+        self.n_original = 0
+
+    def procesar_chunk(self, serie: pd.Series):
+        """Preprocesa y extrae dígitos de un chunk crudo, acumulando solo los conteos."""
+        self.n_original += len(serie)
+        montos = preprocesar_montos(serie, self.umbral_minimo)
+
+        primeros = extraer_primer_digito(montos)
+        self.n_valido_primer += len(primeros)
+        if len(primeros):
+            conteo1 = primeros.value_counts()
+            for d in PRIMER_DIGITO:
+                self.conteo_primer[d - 1] += int(conteo1.get(d, 0))
+            del conteo1
+
+        segundos = extraer_segundo_digito(montos)
+        self.n_valido_segundo += len(segundos)
+        if len(segundos):
+            conteo2 = segundos.value_counts()
+            for d in SEGUNDO_DIGITO:
+                self.conteo_segundo[d] += int(conteo2.get(d, 0))
+            del conteo2
+
+        del montos, primeros, segundos
+
+    def finalizar(self):
+        """Construye el resultado final (tablas, MAD, Chi², Z-scores, veredictos)
+        a partir de los conteos acumulados."""
+        tabla1 = tabla_desde_conteo(self.conteo_primer, PRIMER_DIGITO, DIST_PRIMER_DIGITO, self.n_valido_primer)
+        mad1 = calcular_mad(tabla1)
+        chi2_1, p1 = calcular_chi_cuadrado(tabla1, self.n_valido_primer)
+        veredicto1, nivel1 = veredicto_mad_primer_digito(mad1)
+
+        tabla2 = tabla_desde_conteo(self.conteo_segundo, SEGUNDO_DIGITO, DIST_SEGUNDO_DIGITO, self.n_valido_segundo)
+        mad2 = calcular_mad(tabla2)
+        chi2_2, p2 = calcular_chi_cuadrado(tabla2, self.n_valido_segundo)
+        veredicto2, nivel2 = veredicto_mad_segundo_digito(mad2)
+
+        return {
+            "primer_digito": {
+                "tabla": tabla1,
+                "n": self.n_valido_primer,
+                "mad": mad1,
+                "chi2": chi2_1,
+                "p_valor": p1,
+                "veredicto": veredicto1,
+                "nivel": nivel1,
+            },
+            "segundo_digito": {
+                "tabla": tabla2,
+                "n": self.n_valido_segundo,
+                "mad": mad2,
+                "chi2": chi2_2,
+                "p_valor": p2,
+                "veredicto": veredicto2,
+                "nivel": nivel2,
+            },
+        }
+
+
 def analisis_completo(montos: pd.Series):
-    """Ejecuta el análisis de primer y segundo dígito sobre una serie de montos."""
-    resultado = {}
-
-    primeros = extraer_primer_digito(montos)
-    tabla1, n1 = tabla_frecuencias(primeros, PRIMER_DIGITO, DIST_PRIMER_DIGITO)
-    mad1 = calcular_mad(tabla1)
-    chi2_1, p1 = calcular_chi_cuadrado(tabla1, n1)
-    veredicto1, nivel1 = veredicto_mad_primer_digito(mad1)
-
-    resultado["primer_digito"] = {
-        "tabla": tabla1,
-        "n": n1,
-        "mad": mad1,
-        "chi2": chi2_1,
-        "p_valor": p1,
-        "veredicto": veredicto1,
-        "nivel": nivel1,
-    }
-
-    segundos = extraer_segundo_digito(montos)
-    tabla2, n2 = tabla_frecuencias(segundos, SEGUNDO_DIGITO, DIST_SEGUNDO_DIGITO)
-    mad2 = calcular_mad(tabla2)
-    chi2_2, p2 = calcular_chi_cuadrado(tabla2, n2)
-    veredicto2, nivel2 = veredicto_mad_segundo_digito(mad2)
-
-    resultado["segundo_digito"] = {
-        "tabla": tabla2,
-        "n": n2,
-        "mad": mad2,
-        "chi2": chi2_2,
-        "p_valor": p2,
-        "veredicto": veredicto2,
-        "nivel": nivel2,
-    }
-
-    return resultado
+    """Ejecuta el análisis de primer y segundo dígito sobre una serie de montos
+    ya preprocesada (ver `preprocesar_montos`). Atajo de conveniencia sobre
+    `AcumuladorDigitos` para analizar una serie completa ya en memoria."""
+    acumulador = AcumuladorDigitos(umbral_minimo=0.0)
+    acumulador.procesar_chunk(montos)
+    return acumulador.finalizar()

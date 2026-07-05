@@ -2,10 +2,15 @@
 Analizador Forense de Benford
 Aplicación Streamlit para detección de anomalías en transacciones financieras
 basada en la metodología de Nigrini (análisis de primer y segundo dígito).
+
+Optimizada para bajo consumo de memoria: los archivos se leen y procesan por
+chunks, extrayendo únicamente la columna de montos (y, si aplica, la de
+etiqueta) y acumulando solo conteos de dígitos — nunca se retiene el archivo
+completo ni la serie completa de montos en memoria.
 """
 
+import gc
 import gzip
-import io
 import zipfile
 
 import numpy as np
@@ -13,13 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from benford import (
-    DIST_PRIMER_DIGITO,
-    DIST_SEGUNDO_DIGITO,
-    analisis_completo,
-    calcular_mad,
-    preprocesar_montos,
-)
+from benford import AcumuladorDigitos
 
 st.set_page_config(
     page_title="Analizador Forense de Benford",
@@ -29,36 +28,133 @@ st.set_page_config(
 
 UMBRAL_MINIMO = 1.00
 TIPOS_ARCHIVO_ACEPTADOS = ["csv", "gz", "zip"]
+FILAS_MUESTRA = 20
+TAMANO_CHUNK = 200_000
+LIMITE_VALORES_UNICOS = 50
 
 
-def leer_csv_subido(archivo, sep: str, decimal: str, key_prefix: str = "") -> pd.DataFrame:
-    """Lee un archivo subido en formato .csv, .csv.gz o .zip (con uno o más CSV)."""
+# ------------------------- Lectura de archivos por chunks -------------------------
+
+def abrir_flujo_csv(archivo, key_prefix: str = "", zip_interno: str | None = None):
+    """Abre un flujo de lectura para un archivo .csv/.csv.gz/.zip sin cargarlo
+    completo en memoria. Devuelve (flujo, nombre_zip_interno); el flujo debe
+    cerrarse con `cerrar_flujo` tras su uso (salvo que sea el propio `archivo`)."""
     nombre = archivo.name.lower()
-    contenido = archivo.read()
+    archivo.seek(0)
 
     if nombre.endswith(".zip"):
-        with zipfile.ZipFile(io.BytesIO(contenido)) as zf:
-            csvs = [
-                n for n in zf.namelist()
-                if n.lower().endswith(".csv") and not n.startswith("__MACOSX")
-            ]
-            if not csvs:
-                raise ValueError("El archivo ZIP no contiene ningún archivo CSV.")
-            if len(csvs) == 1:
-                nombre_csv = csvs[0]
-            else:
-                nombre_csv = st.selectbox(
-                    "El ZIP contiene varios archivos CSV, elige cuál usar:",
-                    csvs,
-                    key=f"{key_prefix}_zip_select",
-                )
-            with zf.open(nombre_csv) as f:
-                return pd.read_csv(f, sep=sep, decimal=decimal)
-    elif nombre.endswith(".gz"):
-        with gzip.GzipFile(fileobj=io.BytesIO(contenido)) as f:
-            return pd.read_csv(f, sep=sep, decimal=decimal)
-    else:
-        return pd.read_csv(io.BytesIO(contenido), sep=sep, decimal=decimal)
+        zf = zipfile.ZipFile(archivo)
+        csvs = [
+            n for n in zf.namelist()
+            if n.lower().endswith(".csv") and not n.startswith("__MACOSX")
+        ]
+        if not csvs:
+            raise ValueError("El archivo ZIP no contiene ningún archivo CSV.")
+        if zip_interno is not None:
+            nombre_csv = zip_interno
+        elif len(csvs) == 1:
+            nombre_csv = csvs[0]
+        else:
+            nombre_csv = st.selectbox(
+                "El ZIP contiene varios archivos CSV, elige cuál usar:",
+                csvs,
+                key=f"{key_prefix}_zip_select",
+            )
+        return zf.open(nombre_csv), nombre_csv
+
+    if nombre.endswith(".gz"):
+        return gzip.GzipFile(fileobj=archivo), None
+
+    return archivo, None
+
+
+def cerrar_flujo(flujo, archivo):
+    if flujo is not archivo and hasattr(flujo, "close"):
+        flujo.close()
+
+
+def leer_muestra(archivo, sep: str, decimal: str, key_prefix: str = ""):
+    """Lee solo el encabezado y unas pocas filas de muestra (no el archivo
+    completo), para poblar los selectores de columnas."""
+    flujo, zip_interno = abrir_flujo_csv(archivo, key_prefix=key_prefix)
+    try:
+        muestra = pd.read_csv(flujo, sep=sep, decimal=decimal, nrows=FILAS_MUESTRA)
+    finally:
+        cerrar_flujo(flujo, archivo)
+    return muestra, zip_interno
+
+
+def valores_unicos_columna(archivo, sep, decimal, columna, key_prefix, zip_interno, limite=LIMITE_VALORES_UNICOS):
+    """Escanea el archivo por chunks para obtener los valores únicos de una
+    columna, sin cargar el archivo completo en memoria.
+
+    Deliberadamente sin `st.cache_data`: el hashing de Streamlit sobre un
+    `UploadedFile` grande puede terminar copiando el archivo completo en
+    memoria para calcular la clave de caché, lo cual sería contraproducente
+    aquí. Volver a escanear una sola columna por chunks es barato."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    valores = set()
+    try:
+        with pd.read_csv(flujo, sep=sep, decimal=decimal, usecols=[columna], chunksize=TAMANO_CHUNK) as lector:
+            for chunk in lector:
+                valores.update(chunk[columna].dropna().unique().tolist())
+                del chunk
+                if len(valores) > limite:
+                    break
+    finally:
+        cerrar_flujo(flujo, archivo)
+    gc.collect()
+    return valores
+
+
+def procesar_montos_en_chunks(archivo, sep, decimal, col_monto, key_prefix, zip_interno):
+    """Procesa el archivo completo por chunks, extrayendo solo la columna de
+    montos y acumulando únicamente conteos de dígitos."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    acumulador = AcumuladorDigitos(UMBRAL_MINIMO)
+    try:
+        with pd.read_csv(flujo, sep=sep, decimal=decimal, usecols=[col_monto], chunksize=TAMANO_CHUNK) as lector:
+            for chunk in lector:
+                acumulador.procesar_chunk(chunk[col_monto])
+                del chunk
+    finally:
+        cerrar_flujo(flujo, archivo)
+
+    resultado = acumulador.finalizar()
+    n_original = acumulador.n_original
+    del acumulador
+    gc.collect()
+    return resultado, n_original
+
+
+def procesar_segmentado_en_chunks(archivo, sep, decimal, col_monto, col_etiqueta, valor_riesgo, key_prefix, zip_interno):
+    """Procesa el archivo completo por chunks, separando legítimas vs. riesgo
+    y acumulando únicamente conteos de dígitos para cada grupo."""
+    flujo, _ = abrir_flujo_csv(archivo, key_prefix=key_prefix, zip_interno=zip_interno)
+    acum_global = AcumuladorDigitos(UMBRAL_MINIMO)
+    acum_legitimas = AcumuladorDigitos(UMBRAL_MINIMO)
+    acum_riesgo = AcumuladorDigitos(UMBRAL_MINIMO)
+    try:
+        with pd.read_csv(
+            flujo, sep=sep, decimal=decimal, usecols=[col_monto, col_etiqueta], chunksize=TAMANO_CHUNK
+        ) as lector:
+            for chunk in lector:
+                acum_global.procesar_chunk(chunk[col_monto])
+                es_riesgo = chunk[col_etiqueta] == valor_riesgo
+                acum_riesgo.procesar_chunk(chunk.loc[es_riesgo, col_monto])
+                acum_legitimas.procesar_chunk(chunk.loc[~es_riesgo, col_monto])
+                del chunk, es_riesgo
+    finally:
+        cerrar_flujo(flujo, archivo)
+
+    resultado_global = acum_global.finalizar()
+    resultado_legitimas = acum_legitimas.finalizar() if acum_legitimas.n_valido_primer > 0 else None
+    resultado_riesgo = acum_riesgo.finalizar() if acum_riesgo.n_valido_primer > 0 else None
+    n_original = acum_global.n_original
+
+    del acum_global, acum_legitimas, acum_riesgo
+    gc.collect()
+    return resultado_global, resultado_legitimas, resultado_riesgo, n_original
 
 
 def incremento_pct(base: float, nuevo: float) -> float:
@@ -66,6 +162,8 @@ def incremento_pct(base: float, nuevo: float) -> float:
         return np.nan
     return (nuevo - base) / base * 100
 
+
+# ------------------------- Visualización -------------------------
 
 def grafico_comparativo(tabla: pd.DataFrame, titulo: str, x_titulo: str):
     fig = go.Figure()
@@ -181,20 +279,23 @@ def mostrar_analisis(resultado: dict):
             )
 
 
+# ------------------------- Modo: comparación de subconjuntos -------------------------
+
 def modo_comparacion_subconjuntos(separador: str, decimal: str):
     st.header("🧪 Comparación de subconjuntos")
     st.markdown(
         "Carga por separado hasta tres conjuntos de transacciones (cada uno en "
         "**CSV**, **CSV.GZ** o **ZIP**) para comparar su conformidad con la Ley "
         "de Benford. Se necesitan al menos **dos** conjuntos cargados para "
-        "generar la comparación."
+        "generar la comparación. Cada archivo se procesa por chunks, sin "
+        "cargarlo completo en memoria."
     )
 
     slots = ["Conjunto Válido (global)", "Transacciones Legítimas", "Transacciones de Lavado"]
     claves = ["valido", "legitimas", "lavado"]
 
     columnas_layout = st.columns(3)
-    subconjuntos = {}
+    config_subconjuntos = {}
 
     for columna, nombre, clave in zip(columnas_layout, slots, claves):
         with columna:
@@ -205,33 +306,55 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
             if archivo is None:
                 continue
             try:
-                df_sub = leer_csv_subido(archivo, separador, decimal, key_prefix=clave)
+                muestra, zip_interno = leer_muestra(archivo, separador, decimal, key_prefix=clave)
             except Exception as e:
                 st.error(f"No se pudo leer el archivo: {e}")
                 continue
-            if df_sub.empty:
+            if muestra.empty:
                 st.error("El archivo está vacío.")
                 continue
 
             col_monto = st.selectbox(
-                "Columna de montos", list(df_sub.columns), key=f"col_monto_{clave}"
+                "Columna de montos", list(muestra.columns), key=f"col_monto_{clave}"
             )
-            montos = preprocesar_montos(df_sub[col_monto], UMBRAL_MINIMO)
-            st.caption(f"{len(montos):,} registros válidos de {len(df_sub):,} totales.")
+            st.caption(f"Vista previa de {len(muestra)} fila(s). El total se calculará al ejecutar.")
 
-            if len(montos) == 0:
-                st.warning("No quedan registros válidos tras el preprocesamiento.")
-                continue
-            if len(montos) < 30:
-                st.warning("Menos de 30 observaciones válidas: resultados poco confiables.")
+            config_subconjuntos[nombre] = {
+                "archivo": archivo,
+                "col_monto": col_monto,
+                "zip_interno": zip_interno,
+                "clave": clave,
+            }
 
-            subconjuntos[nombre] = analisis_completo(montos)
-
-    if len(subconjuntos) < 2:
+    if len(config_subconjuntos) < 2:
         st.info("Carga al menos dos conjuntos para ver la tabla comparativa.")
         return
 
+    ejecutar = st.button("🚀 Ejecutar comparación", type="primary")
+    if not ejecutar:
+        return
+
     st.markdown("---")
+    subconjuntos = {}
+    with st.spinner("Procesando archivos por chunks (esto puede tardar para archivos grandes)..."):
+        for nombre, cfg in config_subconjuntos.items():
+            resultado, n_original = procesar_montos_en_chunks(
+                cfg["archivo"], separador, decimal, cfg["col_monto"],
+                key_prefix=cfg["clave"], zip_interno=cfg["zip_interno"],
+            )
+            n_validos = resultado["primer_digito"]["n"]
+            st.caption(f"**{nombre}**: {n_validos:,} registros válidos de {n_original:,} totales.")
+            if n_validos == 0:
+                st.warning(f"'{nombre}': no quedan registros válidos tras el preprocesamiento.")
+                continue
+            if n_validos < 30:
+                st.warning(f"'{nombre}': menos de 30 observaciones válidas ({n_validos}); resultados poco confiables.")
+            subconjuntos[nombre] = resultado
+
+    if len(subconjuntos) < 2:
+        st.info("Se necesitan al menos dos conjuntos con datos válidos para comparar.")
+        return
+
     st.subheader("📊 Tabla comparativa de conformidad")
 
     def resaltar_lavado(fila):
@@ -319,7 +442,8 @@ st.title("🔍 Analizador Forense de Benford")
 st.markdown(
     "Herramienta de auditoría forense para detectar anomalías en transacciones "
     "financieras aplicando la **Ley de Benford** con la metodología de "
-    "**Mark Nigrini** (análisis de primer y segundo dígito, MAD, Chi-cuadrado y Z-scores)."
+    "**Mark Nigrini** (análisis de primer y segundo dígito, MAD, Chi-cuadrado y Z-scores). "
+    "Los archivos se procesan por chunks para soportar CSV de gran tamaño con bajo consumo de memoria."
 )
 
 with st.sidebar:
@@ -351,25 +475,31 @@ if archivo is None:
         - Debe incluir una columna numérica con los **montos** de las transacciones.
         - Opcionalmente, una columna binaria que etiquete cada transacción como
           *legítima* o *de riesgo/fraude* (por ejemplo: 0/1, "Sí"/"No", "Riesgo"/"Legítima").
+        - Puede tener millones de filas: se lee y procesa por chunks, sin
+          cargarlo completo en memoria.
         """
     )
     st.stop()
 
 try:
-    df = leer_csv_subido(archivo, separador, decimal, key_prefix="unico")
+    muestra, zip_interno = leer_muestra(archivo, separador, decimal, key_prefix="unico")
 except Exception as e:
     st.error(f"No se pudo leer el archivo: {e}")
     st.stop()
 
-if df.empty:
-    st.error("El archivo CSV está vacío.")
+if muestra.empty:
+    st.error("El archivo está vacío.")
     st.stop()
 
 st.subheader("Vista previa de los datos")
-st.dataframe(df.head(20), use_container_width=True)
-st.caption(f"El archivo contiene {len(df):,} filas y {len(df.columns)} columnas.")
+st.dataframe(muestra, use_container_width=True)
+st.caption(
+    f"Mostrando las primeras {len(muestra):,} fila(s) como vista previa (el archivo "
+    "no se carga completo en memoria; el número total de registros se calculará "
+    "al ejecutar el análisis)."
+)
 
-columnas = list(df.columns)
+columnas = list(muestra.columns)
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -381,16 +511,21 @@ with col_b:
     )
     col_etiqueta = None if col_etiqueta == "(Ninguna)" else col_etiqueta
 
+valor_riesgo = None
 if col_etiqueta:
-    valores_unicos = df[col_etiqueta].dropna().unique()
+    with st.spinner("Escaneando valores únicos de la columna de etiqueta..."):
+        valores_unicos = valores_unicos_columna(
+            archivo, separador, decimal, col_etiqueta, "unico", zip_interno
+        )
     if len(valores_unicos) != 2:
         st.warning(
-            f"La columna '{col_etiqueta}' tiene {len(valores_unicos)} valores únicos. "
+            f"La columna '{col_etiqueta}' tiene {len(valores_unicos)}"
+            f"{'+' if len(valores_unicos) > LIMITE_VALORES_UNICOS else ''} valores únicos. "
             "Se espera una columna binaria (2 valores). Elige cuál representa 'riesgo'."
         )
     valor_riesgo = st.selectbox(
         "¿Qué valor de la columna de etiqueta representa transacciones de RIESGO?",
-        sorted(valores_unicos.tolist(), key=str),
+        sorted(valores_unicos, key=str),
     )
 
 ejecutar = st.button("🚀 Ejecutar análisis de Benford", type="primary")
@@ -398,34 +533,41 @@ ejecutar = st.button("🚀 Ejecutar análisis de Benford", type="primary")
 if not ejecutar:
     st.stop()
 
-# --- Preprocesamiento ---
-montos_originales = df[col_monto]
-montos = preprocesar_montos(montos_originales, UMBRAL_MINIMO)
-
-n_original = len(montos_originales)
-n_excluidos = n_original - len(montos)
-
 st.markdown("---")
+with st.spinner("Procesando archivo por chunks (esto puede tardar para archivos grandes)..."):
+    if col_etiqueta:
+        resultado_global, resultado_legitimas, resultado_riesgo, n_original = procesar_segmentado_en_chunks(
+            archivo, separador, decimal, col_monto, col_etiqueta, valor_riesgo,
+            key_prefix="unico", zip_interno=zip_interno,
+        )
+    else:
+        resultado_global, n_original = procesar_montos_en_chunks(
+            archivo, separador, decimal, col_monto, key_prefix="unico", zip_interno=zip_interno,
+        )
+        resultado_legitimas = resultado_riesgo = None
+
+n_validos = resultado_global["primer_digito"]["n"]
+n_excluidos = n_original - n_validos
+
 st.subheader("🧹 Preprocesamiento de datos")
 c1, c2, c3 = st.columns(3)
 c1.metric("Registros totales", f"{n_original:,}")
 c2.metric(f"Excluidos (< USD {UMBRAL_MINIMO:.2f} o no numéricos)", f"{n_excluidos:,}")
-c3.metric("Registros válidos para el análisis", f"{len(montos):,}")
+c3.metric("Registros válidos para el análisis", f"{n_validos:,}")
 
-if len(montos) < 30:
+if n_validos < 30:
     st.warning(
         "El número de observaciones válidas es muy bajo (< 30). "
         "Los resultados estadísticos pueden no ser confiables."
     )
 
-if len(montos) == 0:
+if n_validos == 0:
     st.error("No quedan registros válidos tras el preprocesamiento.")
     st.stop()
 
 # --- Análisis global ---
 st.markdown("---")
 st.header("📈 Análisis global (toda la muestra)")
-resultado_global = analisis_completo(montos)
 mostrar_analisis(resultado_global)
 
 # --- Análisis segmentado (legítimas vs. riesgo) ---
@@ -433,13 +575,10 @@ if col_etiqueta:
     st.markdown("---")
     st.header("⚖️ Análisis segmentado: legítimas vs. riesgo")
 
-    df_valido = df.loc[montos.index]
-    es_riesgo = df_valido[col_etiqueta] == valor_riesgo
+    n_legitimas = resultado_legitimas["primer_digito"]["n"] if resultado_legitimas else 0
+    n_riesgo = resultado_riesgo["primer_digito"]["n"] if resultado_riesgo else 0
 
-    montos_riesgo = montos[es_riesgo]
-    montos_legitimas = montos[~es_riesgo]
-
-    if len(montos_riesgo) < 10 or len(montos_legitimas) < 10:
+    if n_riesgo < 10 or n_legitimas < 10:
         st.warning(
             "Uno de los dos grupos tiene menos de 10 observaciones válidas; "
             "los resultados segmentados pueden no ser estadísticamente confiables."
@@ -447,25 +586,15 @@ if col_etiqueta:
 
     col_leg, col_riesgo = st.columns(2)
 
-    if len(montos_legitimas) > 0:
-        resultado_legitimas = analisis_completo(montos_legitimas)
-    else:
-        resultado_legitimas = None
-
-    if len(montos_riesgo) > 0:
-        resultado_riesgo = analisis_completo(montos_riesgo)
-    else:
-        resultado_riesgo = None
-
     with col_leg:
-        st.subheader(f"✅ Legítimas (n = {len(montos_legitimas):,})")
+        st.subheader(f"✅ Legítimas (n = {n_legitimas:,})")
         if resultado_legitimas:
             mostrar_analisis(resultado_legitimas)
         else:
             st.info("Sin observaciones en este grupo.")
 
     with col_riesgo:
-        st.subheader(f"🚨 Riesgo (n = {len(montos_riesgo):,})")
+        st.subheader(f"🚨 Riesgo (n = {n_riesgo:,})")
         if resultado_riesgo:
             mostrar_analisis(resultado_riesgo)
         else:

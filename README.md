@@ -36,6 +36,10 @@ metodología de auditoría forense de **Mark Nigrini**.
    valor p y veredicto para primer y segundo dígito) que resalta
    visualmente el conjunto de Lavado, además del incremento porcentual de
    su MAD respecto al de Legítimas.
+9. **Bajo consumo de memoria**: los archivos se leen y procesan **por
+   chunks** (nunca se carga el CSV completo en un DataFrame), pensado para
+   soportar archivos de cientos de MB con millones de filas incluso en
+   entornos con poca RAM (por ejemplo, Streamlit Community Cloud, ~1 GB).
 
 ## Rangos de conformidad de MAD (Nigrini)
 
@@ -116,13 +120,38 @@ valor p y veredicto para primer y segundo dígito), resaltando la fila de
 "Transacciones de Lavado", y — si se cargaron "Legítimas" y "Lavado" — el
 incremento porcentual del MAD de Lavado respecto a Legítimas.
 
+## Procesamiento por chunks y consumo de memoria
+
+Para soportar archivos de cientos de MB con millones de filas sin agotar la
+memoria disponible (por ejemplo, en Streamlit Community Cloud, con ~1 GB de
+RAM), la aplicación **nunca carga el archivo completo en un DataFrame**:
+
+- El selector de columnas se llena leyendo solo el **encabezado y ~20 filas
+  de muestra** (`pandas.read_csv(..., nrows=20)`), no el archivo entero.
+- El análisis completo lee el archivo con `pandas.read_csv(..., usecols=[...],
+  chunksize=...)`, extrayendo únicamente la(s) columna(s) necesarias
+  (montos y, si aplica, etiqueta) y descartando el resto.
+- Por cada chunk solo se acumulan **conteos de primer/segundo dígito**
+  (arreglos de tamaño fijo, 9 y 10 posiciones) — nunca se retiene la serie
+  completa de montos ni el archivo completo en memoria. El resultado
+  estadístico final (MAD, Chi-cuadrado, Z-scores) es matemáticamente
+  idéntico a analizar el archivo de una sola vez.
+- Tras procesar cada archivo se liberan explícitamente los acumuladores
+  (`del` + `gc.collect()`).
+- El tamaño de subida máximo por defecto se amplía a 1 GB vía
+  `.streamlit/config.toml` (`server.maxUploadSize`); ajústalo según tu
+  entorno de despliegue.
+- El tamaño de chunk (`TAMANO_CHUNK` en `app.py`, 200.000 filas por
+  defecto) puede reducirse si tu entorno tiene menos memoria disponible.
+
 ## Estructura del proyecto
 
 ```
 .
-├── app.py              # Interfaz Streamlit
-├── benford.py          # Lógica estadística (Ley de Benford, MAD, Chi², Z-scores)
-├── requirements.txt    # Dependencias
+├── app.py                    # Interfaz Streamlit (lectura y procesamiento por chunks)
+├── benford.py                # Lógica estadística (Ley de Benford, MAD, Chi², Z-scores, acumulador incremental)
+├── requirements.txt          # Dependencias
+├── .streamlit/config.toml    # Configuración de Streamlit (tamaño máximo de subida)
 └── README.md
 ```
 
