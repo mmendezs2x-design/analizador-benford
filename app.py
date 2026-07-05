@@ -40,6 +40,236 @@ RUTA_TABLA_SEGUNDO_DIGITO = RUTA_BASE / "tabla3_benford_segundo_digito_resultado
 RUTA_TABLA_COMPARACION = RUTA_BASE / "tabla4_comparacion_lavado_legitimas.json"
 
 
+# ------------------------- Paleta e identidad visual -------------------------
+# Estética únicamente: nada en esta sección altera cálculos ni la lectura de JSON.
+
+COLOR_FONDO = "#0B1220"
+COLOR_TARJETA = "#141B2D"
+COLOR_BORDE = "rgba(255, 255, 255, 0.08)"
+COLOR_ACENTO = "#22D3EE"
+COLOR_TEXTO = "#E6EDF3"
+COLOR_TEXTO_SECUNDARIO = "#8B98AC"
+
+COLOR_OBSERVADO = "#22D3EE"
+COLOR_BENFORD = "#CBD5E1"
+COLOR_OK = "#10B981"
+COLOR_AMBAR = "#F59E0B"
+COLOR_ALERTA = "#EF4444"
+
+FUENTE_SANS = (
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
+    "'Helvetica Neue', Arial, sans-serif"
+)
+
+# Mapea el nivel devuelto por benford.py (4 bandas de Nigrini) al semáforo
+# visual de 3 estados que pide la interfaz (verde / ámbar / rojo).
+NIVEL_A_SEMAFORO = {
+    "success": "verde",
+    "info": "ambar",
+    "warning": "rojo",
+    "error": "rojo",
+}
+
+
+def inyectar_estilos():
+    st.markdown(
+        f"""
+        <style>
+        html, body, [class*="css"] {{
+            font-family: {FUENTE_SANS};
+        }}
+
+        div[data-testid="stMetric"] {{
+            background: {COLOR_TARJETA};
+            border: 1px solid {COLOR_BORDE};
+            border-radius: 12px;
+            padding: 0.9rem 1.1rem;
+            overflow: visible;
+        }}
+        div[data-testid="stMetricLabel"] {{
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        div[data-testid="stMetricValue"] {{
+            color: {COLOR_TEXTO};
+            font-weight: 600;
+            font-size: 1.55rem;
+            white-space: normal;
+            overflow-wrap: break-word;
+            overflow: visible;
+        }}
+        div[data-testid="stMetricValue"] > div {{
+            white-space: normal;
+            overflow-wrap: break-word;
+            overflow: visible;
+            text-overflow: clip;
+        }}
+
+        .app-header {{
+            margin-bottom: 0.6rem;
+        }}
+        .app-header-titulo {{
+            font-size: 2.1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            color: {COLOR_TEXTO};
+            margin-bottom: 0.15rem;
+        }}
+        .app-header-subtitulo {{
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 1.02rem;
+            font-weight: 400;
+        }}
+
+        .badge-veredicto {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.32rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid transparent;
+            margin: 0.15rem 0 0.4rem 0;
+        }}
+        .badge-dot {{
+            width: 8px;
+            height: 8px;
+            min-width: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }}
+        .badge-verde {{ background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.35); }}
+        .badge-ambar {{ background: rgba(245, 158, 11, 0.12); color: #FBBF24; border-color: rgba(245, 158, 11, 0.35); }}
+        .badge-rojo  {{ background: rgba(239, 68, 68, 0.12);  color: #F87171; border-color: rgba(239, 68, 68, 0.35); }}
+
+        .veredicto-etiqueta {{
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.2rem;
+        }}
+
+        .hallazgo-card {{
+            border-left: 3px solid {COLOR_ALERTA};
+            background: rgba(239, 68, 68, 0.07);
+            border-radius: 8px;
+            padding: 0.9rem 1.1rem;
+            margin: 0.5rem 0;
+        }}
+        .hallazgo-card.ok {{
+            border-left-color: {COLOR_OK};
+            background: rgba(16, 185, 129, 0.07);
+        }}
+        .hallazgo-titulo {{
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.07em;
+            color: {COLOR_TEXTO_SECUNDARIO};
+            margin-bottom: 0.3rem;
+            font-weight: 600;
+        }}
+        .hallazgo-texto {{
+            color: {COLOR_TEXTO};
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }}
+
+        .app-footer {{
+            margin-top: 2.5rem;
+            padding-top: 1.1rem;
+            border-top: 1px solid {COLOR_BORDE};
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 0.8rem;
+            line-height: 1.7;
+        }}
+        .app-footer strong {{
+            color: {COLOR_TEXTO};
+        }}
+
+        .sidebar-seccion {{
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
+            margin: 0.9rem 0 0.25rem 0;
+        }}
+        .sidebar-destacado {{
+            display: inline-block;
+            background: rgba(34, 211, 238, 0.12);
+            color: {COLOR_ACENTO};
+            border: 1px solid rgba(34, 211, 238, 0.35);
+            border-radius: 999px;
+            padding: 0.15rem 0.6rem;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_badge_veredicto(texto: str, nivel: str):
+    """Muestra el veredicto de conformidad como badge semáforo
+    (verde = conforme, ámbar = marginal, rojo = no conforme)."""
+    clase = f"badge-{NIVEL_A_SEMAFORO.get(nivel, 'ambar')}"
+    st.markdown(
+        f'<div class="badge-veredicto {clase}"><span class="badge-dot"></span>{texto}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_hallazgo(texto: str, alerta: bool = True, titulo: str = "Hallazgo clave"):
+    """Tarjeta destacada para hallazgos (Tabla 17 y comparaciones segmentadas)."""
+    clase = "hallazgo-card" if alerta else "hallazgo-card ok"
+    st.markdown(
+        f'<div class="{clase}"><div class="hallazgo-titulo">{titulo}</div>'
+        f'<div class="hallazgo-texto">{texto}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def aplicar_tema_grafico(fig):
+    """Aplica un tema oscuro coherente a cualquier figura Plotly de la app
+    (fondo transparente, tipografía y grillas discretas). No modifica datos."""
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family=FUENTE_SANS, color=COLOR_TEXTO_SECUNDARIO, size=12),
+        title=dict(font=dict(size=14, color=COLOR_TEXTO)),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=COLOR_TEXTO_SECUNDARIO)),
+        margin=dict(t=48, l=10, r=10, b=40),
+    )
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.12)", color=COLOR_TEXTO_SECUNDARIO)
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.12)", color=COLOR_TEXTO_SECUNDARIO)
+    return fig
+
+
+def render_footer():
+    st.markdown(
+        """
+        <div class="app-footer">
+            <strong>La Ley de Benford como Herramienta de Calibración Forense para la
+            Detección de Lavado de Activos: Aplicación para el SRI y la UAFE</strong><br>
+            Mauricio Xavier Méndez Silva &middot; Solange Ana Chávez Escalante<br>
+            Universidad Estatal de Milagro (UNEMI) &middot; 2026
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+inyectar_estilos()
+
+
 # ------------------------- Lectura de archivos por chunks -------------------------
 
 def abrir_flujo_csv(archivo, key_prefix: str = "", zip_interno: str | None = None):
@@ -178,15 +408,15 @@ def grafico_comparativo(tabla: pd.DataFrame, titulo: str, x_titulo: str):
         x=tabla["digito"],
         y=tabla["freq_observada"],
         name="Frecuencia observada",
-        marker_color="#1f77b4",
+        marker_color=COLOR_OBSERVADO,
     ))
     fig.add_trace(go.Scatter(
         x=tabla["digito"],
         y=tabla["freq_esperada"],
         name="Distribución de Benford (esperada)",
         mode="lines+markers",
-        line=dict(color="#d62728", width=2),
-        marker=dict(size=7),
+        line=dict(color=COLOR_BENFORD, width=2),
+        marker=dict(size=7, color=COLOR_BENFORD),
     ))
     fig.update_layout(
         title=titulo,
@@ -197,11 +427,11 @@ def grafico_comparativo(tabla: pd.DataFrame, titulo: str, x_titulo: str):
         bargap=0.2,
         height=430,
     )
-    return fig
+    return aplicar_tema_grafico(fig)
 
 
 def grafico_zscore(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
-    colores = ["#d62728" if z > umbral else "#2ca02c" for z in tabla["z_score"]]
+    colores = [COLOR_ALERTA if z > umbral else COLOR_OK for z in tabla["z_score"]]
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=tabla["digito"],
@@ -209,7 +439,7 @@ def grafico_zscore(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
         marker_color=colores,
         name="Z-score",
     ))
-    fig.add_hline(y=umbral, line_dash="dash", line_color="gray",
+    fig.add_hline(y=umbral, line_dash="dash", line_color=COLOR_TEXTO_SECUNDARIO,
                   annotation_text=f"Umbral crítico (±{umbral})")
     fig.update_layout(
         title="Z-score por dígito (significancia individual, α=0.05)",
@@ -218,7 +448,7 @@ def grafico_zscore(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
         xaxis=dict(tickmode="linear"),
         height=350,
     )
-    return fig
+    return aplicar_tema_grafico(fig)
 
 
 def mostrar_metricas(resultado_digito: dict, etiqueta: str):
@@ -228,20 +458,12 @@ def mostrar_metricas(resultado_digito: dict, etiqueta: str):
     col3.metric("Chi-cuadrado (χ²)", f"{resultado_digito['chi2']:.3f}")
     col4.metric("Valor p", f"{resultado_digito['p_valor']:.5f}")
 
-    nivel = resultado_digito["nivel"]
-    mensaje = f"**Veredicto ({etiqueta}):** {resultado_digito['veredicto']}"
-    if nivel == "success":
-        st.success(mensaje)
-    elif nivel == "info":
-        st.info(mensaje)
-    elif nivel == "warning":
-        st.warning(mensaje)
-    else:
-        st.error(mensaje)
+    st.markdown(f'<div class="veredicto-etiqueta">Veredicto — {etiqueta}</div>', unsafe_allow_html=True)
+    render_badge_veredicto(resultado_digito["veredicto"], resultado_digito["nivel"])
 
 
 def mostrar_analisis(resultado: dict):
-    tab1, tab2 = st.tabs(["📊 Primer dígito", "📊 Segundo dígito"])
+    tab1, tab2 = st.tabs(["Primer dígito", "Segundo dígito"])
 
     with tab1:
         r1 = resultado["primer_digito"]
@@ -289,7 +511,7 @@ def mostrar_analisis(resultado: dict):
 # ------------------------- Modo: comparación de subconjuntos -------------------------
 
 def modo_comparacion_subconjuntos(separador: str, decimal: str):
-    st.header("🧪 Comparación de subconjuntos")
+    st.header("Comparación de subconjuntos")
     st.markdown(
         "Carga por separado hasta tres conjuntos de transacciones (cada uno en "
         "**CSV**, **CSV.GZ** o **ZIP**) para comparar su conformidad con la Ley "
@@ -337,7 +559,7 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
         st.info("Carga al menos dos conjuntos para ver la tabla comparativa.")
         return
 
-    ejecutar = st.button("🚀 Ejecutar comparación", type="primary")
+    ejecutar = st.button("Ejecutar comparación", type="primary")
     if not ejecutar:
         return
 
@@ -362,11 +584,11 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
         st.info("Se necesitan al menos dos conjuntos con datos válidos para comparar.")
         return
 
-    st.subheader("📊 Tabla comparativa de conformidad")
+    st.subheader("Tabla comparativa de conformidad")
 
     def resaltar_lavado(fila):
         if fila["Conjunto"] == "Transacciones de Lavado":
-            return ["background-color: rgba(214, 39, 40, 0.18)"] * len(fila)
+            return ["background-color: rgba(239, 68, 68, 0.16)"] * len(fila)
         return [""] * len(fila)
 
     for etiqueta_digito, clave_digito in [
@@ -397,7 +619,7 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
 
     if "Transacciones Legítimas" in subconjuntos and "Transacciones de Lavado" in subconjuntos:
         st.markdown("---")
-        st.subheader("🚩 Incremento del MAD: Transacciones de Lavado vs. Legítimas")
+        st.subheader("Incremento del MAD: Transacciones de Lavado vs. Legítimas")
 
         mad_leg_1 = subconjuntos["Transacciones Legítimas"]["primer_digito"]["mad"]
         mad_lav_1 = subconjuntos["Transacciones de Lavado"]["primer_digito"]["mad"]
@@ -426,16 +648,20 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
             )
 
         if not np.isnan(inc_1) and inc_1 > 0:
-            st.error(
-                f"🚨 El conjunto de **Transacciones de Lavado** presenta un MAD de "
-                f"primer dígito un **{inc_1:.1f}%** más alto que el de **Transacciones "
-                "Legítimas**, lo que indica una desviación mucho mayor respecto a la "
-                "Ley de Benford y constituye una señal de alerta de posible manipulación."
+            render_hallazgo(
+                f"El conjunto de <strong>Transacciones de Lavado</strong> presenta un MAD de "
+                f"primer dígito un <strong>{inc_1:.1f}%</strong> más alto que el de "
+                "<strong>Transacciones Legítimas</strong>, lo que indica una desviación mucho "
+                "mayor respecto a la Ley de Benford y constituye una señal de alerta de "
+                "posible manipulación.",
+                alerta=True,
             )
         elif not np.isnan(inc_1):
-            st.info(
+            render_hallazgo(
                 "El conjunto de Lavado no muestra un MAD de primer dígito mayor que "
-                "el de Legítimas en esta comparación."
+                "el de Legítimas en esta comparación.",
+                alerta=False,
+                titulo="Sin hallazgo relevante",
             )
 
     for nombre, resultado in subconjuntos.items():
@@ -551,9 +777,9 @@ def cargar_json(ruta: Path):
 
 def placeholder_json_faltante(nombre_archivo: str, ejemplo: dict, error: str):
     if error == "no_encontrado":
-        st.warning(f"⚠️ No se encontró el archivo **`{nombre_archivo}`** en el repositorio.")
+        st.warning(f"No se encontró el archivo **`{nombre_archivo}`** en el repositorio.")
     else:
-        st.error(f"⚠️ No se pudo leer **`{nombre_archivo}`**: {error}")
+        st.error(f"No se pudo leer **`{nombre_archivo}`**: {error}")
     st.markdown(
         f"Para mostrar esta sección, agrega un archivo llamado `{nombre_archivo}` "
         "en la raíz del repositorio (junto a `app.py`) con la estructura indicada abajo, "
@@ -648,12 +874,12 @@ def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=tabla["digito"], y=tabla["observado_pct"],
-        name="Observado (%)", marker_color="#1f77b4",
+        name="Observado (%)", marker_color=COLOR_OBSERVADO,
     ))
     fig.add_trace(go.Scatter(
         x=tabla["digito"], y=tabla["benford_pct"],
         name="Benford esperado (%)", mode="lines+markers",
-        line=dict(color="#d62728", width=2), marker=dict(size=7),
+        line=dict(color=COLOR_BENFORD, width=2), marker=dict(size=7, color=COLOR_BENFORD),
     ))
     fig.update_layout(
         title=titulo,
@@ -664,15 +890,15 @@ def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
         bargap=0.2,
         height=430,
     )
-    return fig
+    return aplicar_tema_grafico(fig)
 
 
 def grafico_zscore_tesis(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
     """Igual que grafico_zscore, pero usando el z_score ya provisto por el JSON."""
-    colores = ["#d62728" if (pd.notna(z) and z > umbral) else "#2ca02c" for z in tabla["z_score"]]
+    colores = [COLOR_ALERTA if (pd.notna(z) and z > umbral) else COLOR_OK for z in tabla["z_score"]]
     fig = go.Figure()
     fig.add_trace(go.Bar(x=tabla["digito"], y=tabla["z_score"], marker_color=colores, name="Z-score"))
-    fig.add_hline(y=umbral, line_dash="dash", line_color="gray",
+    fig.add_hline(y=umbral, line_dash="dash", line_color=COLOR_TEXTO_SECUNDARIO,
                   annotation_text=f"Umbral crítico (±{umbral})")
     fig.update_layout(
         title="Z-score por dígito (según JSON)",
@@ -681,7 +907,7 @@ def grafico_zscore_tesis(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.9
         xaxis=dict(tickmode="linear"),
         height=350,
     )
-    return fig
+    return aplicar_tema_grafico(fig)
 
 
 def render_metricas_digito(datos: dict, funcion_veredicto=None):
@@ -706,17 +932,8 @@ def render_metricas_digito(datos: dict, funcion_veredicto=None):
             interpretacion = veredicto_calculado
 
     if interpretacion:
-        mensaje = f"**Interpretación del MAD:** {interpretacion}"
-        if nivel == "success":
-            st.success(mensaje)
-        elif nivel == "info":
-            st.info(mensaje)
-        elif nivel == "warning":
-            st.warning(mensaje)
-        elif nivel == "error":
-            st.error(mensaje)
-        else:
-            st.write(mensaje)
+        st.markdown('<div class="veredicto-etiqueta">Interpretación del MAD</div>', unsafe_allow_html=True)
+        render_badge_veredicto(interpretacion, nivel or "info")
 
 
 def render_grafico_digito(datos: dict, titulo_figura: str, x_titulo: str, nombre_tabla: str):
@@ -837,11 +1054,11 @@ def render_tabla_comparacion(datos: dict):
     fig = go.Figure()
     posiciones = [etiquetas["primer_digito"], etiquetas["segundo_digito"]]
     fig.add_trace(go.Bar(
-        x=posiciones, y=mads_leg, name="Legítimas", marker_color="#2ca02c",
+        x=posiciones, y=mads_leg, name="Legítimas", marker_color=COLOR_OK,
         text=[formato_es(v, 6) for v in mads_leg], textposition="outside",
     ))
     fig.add_trace(go.Bar(
-        x=posiciones, y=mads_lav, name="Lavado", marker_color="#d62728",
+        x=posiciones, y=mads_lav, name="Lavado", marker_color=COLOR_ALERTA,
         text=[formato_es(v, 6) for v in mads_lav], textposition="outside",
     ))
     for i, clave in enumerate(["primer_digito", "segundo_digito"]):
@@ -849,7 +1066,7 @@ def render_tabla_comparacion(datos: dict):
         fig.add_annotation(
             x=posiciones[i], y=max(mads_leg[i], mads_lav[i]),
             text=formato_es_pct(inc, 1), showarrow=True, arrowhead=2, ay=-40,
-            font=dict(color="#d62728", size=14),
+            font=dict(color=COLOR_ALERTA, size=14),
         )
     fig.update_layout(
         title="Figura 3: MAD — Legítimas vs. Lavado",
@@ -857,19 +1074,23 @@ def render_tabla_comparacion(datos: dict):
         barmode="group",
         height=430,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(aplicar_tema_grafico(fig), use_container_width=True)
 
     for clave, etiqueta in etiquetas.items():
         inc = incremento[claves_incremento[clave]]
         if inc > 0:
-            st.error(
-                f"🚨 En **{etiqueta.lower()}**, el MAD de **Lavado** es un **{formato_es_pct(inc, 1)}** "
-                "más alto que el de **Legítimas** — señal de alerta de posible manipulación."
+            render_hallazgo(
+                f"En <strong>{etiqueta.lower()}</strong>, el MAD de <strong>Lavado</strong> es un "
+                f"<strong>{formato_es_pct(inc, 1)}</strong> más alto que el de <strong>Legítimas</strong> "
+                "— señal de alerta de posible manipulación.",
+                alerta=True,
             )
         else:
-            st.info(
+            render_hallazgo(
                 f"En {etiqueta.lower()}, el MAD de Lavado no es mayor que el de "
-                f"Legítimas ({formato_es_pct(inc, 1)})."
+                f"Legítimas ({formato_es_pct(inc, 1)}).",
+                alerta=False,
+                titulo="Sin hallazgo relevante",
             )
 
     with st.expander("Ver detalle por dígito — Legítimas vs. Lavado"):
@@ -893,7 +1114,11 @@ def render_tabla_comparacion(datos: dict):
 
 
 def modo_resultados_tesis():
-    st.header("🎓 Resultados de la tesis")
+    st.markdown(
+        '<span class="sidebar-destacado">Vista principal</span>',
+        unsafe_allow_html=True,
+    )
+    st.header("Resultados de la tesis")
     st.markdown(
         "Resultados **pre-calculados** del estudio, leídos directamente de archivos "
         "JSON incluidos en el repositorio (no se recalculan en la app)."
@@ -933,32 +1158,43 @@ def modo_resultados_tesis():
 
 # ------------------------- Interfaz principal -------------------------
 
-st.title("🔍 Analizador Forense de Benford")
 st.markdown(
-    "Herramienta de auditoría forense para detectar anomalías en transacciones "
-    "financieras aplicando la **Ley de Benford** con la metodología de "
-    "**Mark Nigrini** (análisis de primer y segundo dígito, MAD, Chi-cuadrado y Z-scores). "
-    "Los archivos se procesan por chunks para soportar CSV de gran tamaño con bajo consumo de memoria."
+    """
+    <div class="app-header">
+        <div class="app-header-titulo">Analizador Forense de Benford</div>
+        <div class="app-header-subtitulo">Plataforma de detección de anomalías transaccionales</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.caption(
+    "Metodología de Mark Nigrini — análisis de primer y segundo dígito, MAD, Chi-cuadrado "
+    "y Z-scores. Los archivos CSV se procesan por chunks para soportar grandes volúmenes "
+    "con bajo consumo de memoria."
 )
 
-MODO_TESIS = "🎓 Resultados de la tesis"
+MODO_TESIS = "Resultados de la tesis"
 MODO_ARCHIVO_UNICO = "Archivo único (con etiqueta opcional)"
 MODO_COMPARACION = "Comparación de subconjuntos"
 
 with st.sidebar:
-    st.header("⚙️ Configuración")
+    st.markdown('<div class="sidebar-seccion">Modo de análisis</div>', unsafe_allow_html=True)
+    st.markdown('<span class="sidebar-destacado">Recomendado</span>', unsafe_allow_html=True)
     modo = st.radio(
         "Modo de análisis",
         [MODO_TESIS, MODO_ARCHIVO_UNICO, MODO_COMPARACION],
+        label_visibility="collapsed",
     )
 
     separador = decimal = None
     archivo = None
     if modo != MODO_TESIS:
+        st.markdown('<div class="sidebar-seccion">Formato del archivo</div>', unsafe_allow_html=True)
         separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
         decimal = st.selectbox("Separador decimal", [".", ","], index=0)
 
     if modo == MODO_ARCHIVO_UNICO:
+        st.markdown('<div class="sidebar-seccion">Archivo</div>', unsafe_allow_html=True)
         archivo = st.file_uploader(
             "Sube un archivo de transacciones (CSV, CSV.GZ o ZIP)",
             type=TIPOS_ARCHIVO_ACEPTADOS,
@@ -966,14 +1202,16 @@ with st.sidebar:
 
 if modo == MODO_TESIS:
     modo_resultados_tesis()
+    render_footer()
     st.stop()
 
 if modo == MODO_COMPARACION:
     modo_comparacion_subconjuntos(separador, decimal)
+    render_footer()
     st.stop()
 
 if archivo is None:
-    st.info("👈 Sube un archivo en el panel lateral para comenzar el análisis.")
+    st.info("Sube un archivo en el panel lateral para comenzar el análisis.")
     st.markdown(
         """
         **Requisitos del archivo:**
@@ -1034,7 +1272,7 @@ if col_etiqueta:
         sorted(valores_unicos, key=str),
     )
 
-ejecutar = st.button("🚀 Ejecutar análisis de Benford", type="primary")
+ejecutar = st.button("Ejecutar análisis de Benford", type="primary")
 
 if not ejecutar:
     st.stop()
@@ -1055,7 +1293,7 @@ with st.spinner("Procesando archivo por chunks (esto puede tardar para archivos 
 n_validos = resultado_global["primer_digito"]["n"]
 n_excluidos = n_original - n_validos
 
-st.subheader("🧹 Preprocesamiento de datos")
+st.subheader("Preprocesamiento de datos")
 c1, c2, c3 = st.columns(3)
 c1.metric("Registros totales", f"{n_original:,}")
 c2.metric(f"Excluidos (< USD {UMBRAL_MINIMO:.2f} o no numéricos)", f"{n_excluidos:,}")
@@ -1073,13 +1311,13 @@ if n_validos == 0:
 
 # --- Análisis global ---
 st.markdown("---")
-st.header("📈 Análisis global (toda la muestra)")
+st.header("Análisis global (toda la muestra)")
 mostrar_analisis(resultado_global)
 
 # --- Análisis segmentado (legítimas vs. riesgo) ---
 if col_etiqueta:
     st.markdown("---")
-    st.header("⚖️ Análisis segmentado: legítimas vs. riesgo")
+    st.header("Análisis segmentado: legítimas vs. riesgo")
 
     n_legitimas = resultado_legitimas["primer_digito"]["n"] if resultado_legitimas else 0
     n_riesgo = resultado_riesgo["primer_digito"]["n"] if resultado_riesgo else 0
@@ -1093,14 +1331,14 @@ if col_etiqueta:
     col_leg, col_riesgo = st.columns(2)
 
     with col_leg:
-        st.subheader(f"✅ Legítimas (n = {n_legitimas:,})")
+        st.subheader(f"Legítimas (n = {n_legitimas:,})")
         if resultado_legitimas:
             mostrar_analisis(resultado_legitimas)
         else:
             st.info("Sin observaciones en este grupo.")
 
     with col_riesgo:
-        st.subheader(f"🚨 Riesgo (n = {n_riesgo:,})")
+        st.subheader(f"Riesgo (n = {n_riesgo:,})")
         if resultado_riesgo:
             mostrar_analisis(resultado_riesgo)
         else:
@@ -1108,7 +1346,7 @@ if col_etiqueta:
 
     if resultado_legitimas and resultado_riesgo:
         st.markdown("---")
-        st.subheader("📐 Incremento porcentual del MAD (riesgo vs. legítimas)")
+        st.subheader("Incremento porcentual del MAD (riesgo vs. legítimas)")
 
         mad_leg_1 = resultado_legitimas["primer_digito"]["mad"]
         mad_riesgo_1 = resultado_riesgo["primer_digito"]["mad"]
@@ -1143,16 +1381,19 @@ if col_etiqueta:
             )
 
         if inc_1 is not None and not np.isnan(inc_1) and inc_1 > 0:
-            st.warning(
-                f"El grupo de **riesgo** presenta un MAD de primer dígito un "
-                f"**{inc_1:.1f}%** más alto que el grupo de transacciones legítimas, "
+            render_hallazgo(
+                f"El grupo de <strong>riesgo</strong> presenta un MAD de primer dígito un "
+                f"<strong>{inc_1:.1f}%</strong> más alto que el grupo de transacciones legítimas, "
                 "lo que sugiere una mayor desviación respecto a la Ley de Benford "
-                "y podría indicar manipulación o fraude."
+                "y podría indicar manipulación o fraude.",
+                alerta=True,
             )
         elif not np.isnan(inc_1):
-            st.info(
+            render_hallazgo(
                 "El grupo de riesgo no muestra un MAD mayor que el de las transacciones "
-                "legítimas en esta muestra."
+                "legítimas en esta muestra.",
+                alerta=False,
+                titulo="Sin hallazgo relevante",
             )
 
 st.markdown("---")
@@ -1160,3 +1401,4 @@ st.caption(
     "Metodología basada en Nigrini, M. (2012). *Benford's Law: Applications for "
     "Forensic Accounting, Auditing, and Fraud Detection*. Wiley."
 )
+render_footer()
