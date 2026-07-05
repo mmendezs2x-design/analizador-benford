@@ -184,40 +184,61 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
   "grados_libertad": 8,
   "p_valor": 0.0,
   "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
-  "resultados_por_digito": [
-    {"digito": 1, "frecuencia_observada": 0.301, "frecuencia_esperada": 0.30103},
-    {"digito": 2, "frecuencia_observada": 0.176, "frecuencia_esperada": 0.17609}
+  "resultados": [
+    {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
+    {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300}
   ]
 }
 ```
 
-- `resultados_por_digito` debe traer un objeto por cada dígito posible
-  (9 para el primer dígito, 10 para el segundo), con `frecuencia_observada`
-  y `frecuencia_esperada` como proporciones (0–1).
+- `resultados` debe traer un objeto por cada dígito posible (9 para el
+  primer dígito, 10 para el segundo). `digito`, `observado_pct` y
+  `benford_pct` son obligatorios; `diferencia_abs`, `z_score` y
+  `n_observado` son opcionales y, si están presentes, se usan **tal
+  cual** (no se recalculan) tanto en la tabla de detalle como en el
+  gráfico de Z-scores.
+- `observado_pct` / `benford_pct` van en unidades de **porcentaje**
+  (ej. `30.10` para 30,10 %), no como fracción 0–1.
 - `grados_libertad` es opcional (por defecto, cantidad de dígitos − 1).
-- El color de la interpretación del MAD (verde/azul/amarillo/rojo) se
-  calcula con los mismos rangos de Nigrini que el resto de la app a partir
-  de `mad`; el texto mostrado es siempre el de `interpretacion_mad`.
+- `interpretacion_mad` es opcional: si falta, la app muestra el
+  veredicto calculado con los mismos rangos de Nigrini que el resto de
+  la app a partir de `mad` (el color siempre sigue esos rangos).
+- Todos los valores (`n_valido`, `mad`, `chi2`, `p_valor`) se muestran
+  **exactamente como vienen en el JSON**, solo con formato de
+  presentación en español (punto de miles, coma decimal).
 
 **Esquema de `tabla4_comparacion_lavado_legitimas.json`:**
 
 ```json
 {
-  "primer_digito": {
-    "legitimas": {"n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0, "interpretacion_mad": "..."},
-    "lavado":     {"n_valido": 29615,  "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0, "interpretacion_mad": "..."}
+  "legitimas": {
+    "primer_digito":  {"n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0, "resultados": ["..."]},
+    "segundo_digito": {"n_valido": 4900000, "mad": 0.000324, "chi2": 100.0,  "p_valor": 0.5, "resultados": ["..."]}
   },
-  "segundo_digito": {
-    "legitimas": {"n_valido": 4900000, "mad": 0.000324, "chi2": 100.0, "p_valor": 0.5, "interpretacion_mad": "..."},
-    "lavado":     {"n_valido": 27977,  "mad": 0.004509, "chi2": 200.0, "p_valor": 0.0, "interpretacion_mad": "..."}
+  "lavado": {
+    "primer_digito":  {"n_valido": 29615, "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0, "resultados": ["..."]},
+    "segundo_digito": {"n_valido": 27977, "mad": 0.004509, "chi2": 200.0,  "p_valor": 0.0, "resultados": ["..."]}
+  },
+  "incremento_porcentual": {
+    "delta_mad_1d_pct": 320.6,
+    "delta_mad_2d_pct": 1292.7
   }
 }
 ```
 
-El incremento porcentual del MAD (Lavado vs. Legítimas) que se muestra en
-la Tabla 17 y la Figura 3 **se calcula en la app** a partir de los dos
-valores de `mad` de cada sección — no se lee un campo aparte — por lo que
-siempre es consistente con los `mad` provistos.
+- Cada bloque `legitimas.primer_digito` / `legitimas.segundo_digito` /
+  `lavado.primer_digito` / `lavado.segundo_digito` usa el **mismo
+  esquema** que `tabla2_.../tabla3_...` (incluyendo su propio
+  `resultados` con `observado_pct`/`benford_pct`/`z_score`/etc.), y
+  alimenta los gráficos del detalle expandible "Ver detalle por
+  dígito — Legítimas vs. Lavado".
+- `incremento_porcentual.delta_mad_1d_pct` (primer dígito) y
+  `delta_mad_2d_pct` (segundo dígito) son los porcentajes de incremento
+  del MAD de Lavado respecto a Legítimas — la app **los lee
+  directamente y no los recalcula** a partir de los `mad`.
+- Formato de presentación: MAD con 6 decimales, χ² con 1 decimal, Δ%
+  con 1 decimal — todos con coma decimal y punto de miles (ej.
+  `0,004905`, `10.736,4`, `+320,6%`, `+1.292,7%`).
 
 ## Estructura del proyecto
 

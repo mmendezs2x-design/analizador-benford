@@ -445,54 +445,85 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
 
 # ------------------------- Modo: resultados de la tesis (JSON precalculados) -------------------------
 
+def formato_es(valor, decimales: int = 2) -> str:
+    """Formatea un número con convención española: punto para miles, coma
+    para decimales (ej. 10736.4 -> '10.736,4')."""
+    if valor is None or (isinstance(valor, float) and np.isnan(valor)):
+        return "—"
+    texto = f"{valor:,.{decimales}f}"
+    return texto.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def formato_es_pct(valor, decimales: int = 1) -> str:
+    """Formatea un porcentaje con signo y convención española (ej. 1292.7 -> '+1.292,7%')."""
+    if valor is None or (isinstance(valor, float) and np.isnan(valor)):
+        return "—"
+    texto = formato_es(valor, decimales)
+    if valor >= 0 and not texto.startswith("+"):
+        texto = f"+{texto}"
+    return f"{texto}%"
+
+
+def formato_es_pvalor(p_valor) -> str:
+    if p_valor is None or (isinstance(p_valor, float) and np.isnan(p_valor)):
+        return "—"
+    if p_valor >= 0.00001:
+        return formato_es(p_valor, 5)
+    return f"{p_valor:.2e}".replace(".", ",")
+
+
 EJEMPLO_TABLA_PRIMER_DIGITO = {
-    "n_valido": 1000000,
-    "mad": 0.0049,
-    "chi2": 100.0,
+    "n_valido": 4929615,
+    "mad": 0.004913,
+    "chi2": 10736.4,
     "grados_libertad": 8,
-    "p_valor": 0.25,
-    "interpretacion_mad": "Conformidad aceptable con Benford",
-    "resultados_por_digito": [
-        {"digito": 1, "frecuencia_observada": 0.301, "frecuencia_esperada": 0.30103},
-        {"digito": 2, "frecuencia_observada": 0.176, "frecuencia_esperada": 0.17609},
+    "p_valor": 0.0,
+    "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
+    "resultados": [
+        {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
+        {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300},
         "... (un objeto por cada dígito del 1 al 9)",
     ],
 }
 
 EJEMPLO_TABLA_SEGUNDO_DIGITO = {
-    "n_valido": 1000000,
-    "mad": 0.0009,
-    "chi2": 12.0,
+    "n_valido": 4927977,
+    "mad": 0.000324,
+    "chi2": 109.9,
     "grados_libertad": 9,
-    "p_valor": 0.9,
+    "p_valor": 0.0,
     "interpretacion_mad": "Conformidad aceptable con Benford",
-    "resultados_por_digito": [
-        {"digito": 0, "frecuencia_observada": 0.120, "frecuencia_esperada": 0.11968},
-        {"digito": 1, "frecuencia_observada": 0.114, "frecuencia_esperada": 0.11389},
+    "resultados": [
+        {"digito": 0, "observado_pct": 12.00, "benford_pct": 11.968, "diferencia_abs": 0.032, "z_score": 0.9, "n_observado": 591300},
+        {"digito": 1, "observado_pct": 11.40, "benford_pct": 11.389, "diferencia_abs": 0.011, "z_score": 0.3, "n_observado": 561800},
         "... (un objeto por cada dígito del 0 al 9)",
     ],
 }
 
 EJEMPLO_TABLA_COMPARACION = {
-    "primer_digito": {
-        "legitimas": {
-            "n_valido": 900000, "mad": 0.0049, "chi2": 100.0, "p_valor": 0.25,
-            "interpretacion_mad": "Conformidad aceptable con Benford",
+    "legitimas": {
+        "primer_digito": {
+            "n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
         },
-        "lavado": {
-            "n_valido": 5000, "mad": 0.0206, "chi2": 500.0, "p_valor": 0.0,
-            "interpretacion_mad": "No conformidad: asociación grave (posible anomalía)",
+        "segundo_digito": {
+            "n_valido": 4900000, "mad": 0.000324, "chi2": 100.0, "p_valor": 0.5,
+            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
         },
     },
-    "segundo_digito": {
-        "legitimas": {
-            "n_valido": 900000, "mad": 0.0003, "chi2": 12.0, "p_valor": 0.9,
-            "interpretacion_mad": "Conformidad aceptable con Benford",
+    "lavado": {
+        "primer_digito": {
+            "n_valido": 29615, "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
         },
-        "lavado": {
-            "n_valido": 5000, "mad": 0.0045, "chi2": 300.0, "p_valor": 0.0,
-            "interpretacion_mad": "No conformidad: asociación grave (posible anomalía)",
+        "segundo_digito": {
+            "n_valido": 27977, "mad": 0.004509, "chi2": 200.0, "p_valor": 0.0,
+            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
         },
+    },
+    "incremento_porcentual": {
+        "delta_mad_1d_pct": 320.6,
+        "delta_mad_2d_pct": 1292.7,
     },
 }
 
@@ -523,40 +554,88 @@ def placeholder_json_faltante(nombre_archivo: str, ejemplo: dict, error: str):
         st.code(json.dumps(ejemplo, indent=2, ensure_ascii=False), language="json")
 
 
-def tabla_desde_resultados_por_digito(resultados_por_digito):
+def tabla_desde_resultados(resultados):
+    """Construye un DataFrame a partir de la lista 'resultados' del JSON,
+    usando los campos (observado_pct, benford_pct, diferencia_abs, z_score,
+    n_observado) tal cual vienen, sin recalcular nada."""
     filas = []
-    for item in resultados_por_digito:
+    for item in resultados:
         if not isinstance(item, dict):
             continue
         filas.append({
             "digito": item["digito"],
-            "freq_observada": item["frecuencia_observada"],
-            "freq_esperada": item["frecuencia_esperada"],
+            "observado_pct": item["observado_pct"],
+            "benford_pct": item["benford_pct"],
+            "diferencia_abs": item.get("diferencia_abs"),
+            "z_score": item.get("z_score"),
+            "n_observado": item.get("n_observado"),
         })
     return pd.DataFrame(filas)
 
 
-def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_titulo: str, funcion_veredicto):
-    campos_requeridos = ["n_valido", "mad", "chi2", "p_valor", "resultados_por_digito"]
-    faltantes = [c for c in campos_requeridos if c not in datos]
-    if faltantes:
-        st.error(f"Al archivo de **{nombre_tabla}** le faltan los campos: {', '.join(faltantes)}.")
-        return
+def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
+    """Igual que grafico_comparativo, pero usando directamente los porcentajes
+    observado_pct/benford_pct del JSON (sin convertirlos a fracción)."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=tabla["digito"], y=tabla["observado_pct"],
+        name="Observado (%)", marker_color="#1f77b4",
+    ))
+    fig.add_trace(go.Scatter(
+        x=tabla["digito"], y=tabla["benford_pct"],
+        name="Benford esperado (%)", mode="lines+markers",
+        line=dict(color="#d62728", width=2), marker=dict(size=7),
+    ))
+    fig.update_layout(
+        title=titulo,
+        xaxis_title=x_titulo,
+        yaxis_title="Frecuencia (%)",
+        xaxis=dict(tickmode="linear"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        bargap=0.2,
+        height=430,
+    )
+    return fig
 
+
+def grafico_zscore_tesis(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.96):
+    """Igual que grafico_zscore, pero usando el z_score ya provisto por el JSON."""
+    colores = ["#d62728" if (pd.notna(z) and z > umbral) else "#2ca02c" for z in tabla["z_score"]]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=tabla["digito"], y=tabla["z_score"], marker_color=colores, name="Z-score"))
+    fig.add_hline(y=umbral, line_dash="dash", line_color="gray",
+                  annotation_text=f"Umbral crítico (±{umbral})")
+    fig.update_layout(
+        title="Z-score por dígito (según JSON)",
+        xaxis_title=x_titulo,
+        yaxis_title="Z-score",
+        xaxis=dict(tickmode="linear"),
+        height=350,
+    )
+    return fig
+
+
+def render_metricas_digito(datos: dict, funcion_veredicto=None):
     n_valido = datos["n_valido"]
     mad = datos["mad"]
     chi2 = datos["chi2"]
     p_valor = datos["p_valor"]
-    gl = datos.get("grados_libertad", len(datos["resultados_por_digito"]) - 1)
+    gl = datos.get("grados_libertad")
+    etiqueta_chi2 = f"Chi-cuadrado (gl={gl})" if gl is not None else "Chi-cuadrado"
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("N (válidos)", f"{n_valido:,}")
-    c2.metric("MAD", f"{mad:.6f}")
-    c3.metric(f"Chi-cuadrado (gl={gl})", f"{chi2:,.1f}")
-    c4.metric("Valor p", f"{p_valor:.5f}" if p_valor >= 0.00001 else f"{p_valor:.2e}")
+    c1.metric("N (válidos)", formato_es(n_valido, 0))
+    c2.metric("MAD", formato_es(mad, 6))
+    c3.metric(etiqueta_chi2, formato_es(chi2, 1))
+    c4.metric("Valor p", formato_es_pvalor(p_valor))
 
-    _, nivel = funcion_veredicto(mad)
-    interpretacion = datos.get("interpretacion_mad", "")
+    interpretacion = datos.get("interpretacion_mad")
+    nivel = None
+    if funcion_veredicto is not None:
+        veredicto_calculado, nivel = funcion_veredicto(mad)
+        if not interpretacion:
+            interpretacion = veredicto_calculado
+
     if interpretacion:
         mensaje = f"**Interpretación del MAD:** {interpretacion}"
         if nivel == "success":
@@ -565,66 +644,111 @@ def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_ti
             st.info(mensaje)
         elif nivel == "warning":
             st.warning(mensaje)
-        else:
+        elif nivel == "error":
             st.error(mensaje)
+        else:
+            st.write(mensaje)
 
+
+def render_grafico_digito(datos: dict, titulo_figura: str, x_titulo: str, nombre_tabla: str):
+    if "resultados" not in datos:
+        st.error(f"Al archivo de **{nombre_tabla}** le falta el campo 'resultados'.")
+        return
     try:
-        tabla = tabla_desde_resultados_por_digito(datos["resultados_por_digito"])
+        tabla = tabla_desde_resultados(datos["resultados"])
     except (KeyError, TypeError) as e:
         st.error(
-            "Cada elemento de 'resultados_por_digito' debe incluir 'digito', "
-            f"'frecuencia_observada' y 'frecuencia_esperada' (falta {e})."
+            "Cada elemento de 'resultados' debe incluir 'digito', 'observado_pct' "
+            f"y 'benford_pct' (falta {e})."
         )
         return
 
-    st.plotly_chart(grafico_comparativo(tabla, titulo_figura, x_titulo), use_container_width=True)
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.plotly_chart(grafico_comparativo_tesis(tabla, titulo_figura, x_titulo), use_container_width=True)
+    with c2:
+        if tabla["z_score"].notna().any():
+            st.plotly_chart(grafico_zscore_tesis(tabla, x_titulo), use_container_width=True)
+
     with st.expander(f"Ver tabla de datos — {nombre_tabla}"):
+        tabla_mostrar = tabla.rename(columns={
+            "digito": "Dígito", "observado_pct": "Observado (%)", "benford_pct": "Benford (%)",
+            "diferencia_abs": "Diferencia abs.", "z_score": "Z-score", "n_observado": "N observado",
+        })
         st.dataframe(
-            tabla.style.format({"freq_observada": "{:.4%}", "freq_esperada": "{:.4%}"}),
+            tabla_mostrar.style.format({
+                "Observado (%)": lambda v: formato_es(v, 4),
+                "Benford (%)": lambda v: formato_es(v, 4),
+                "Diferencia abs.": lambda v: formato_es(v, 4) if pd.notna(v) else "—",
+                "Z-score": lambda v: formato_es(v, 3) if pd.notna(v) else "—",
+                "N observado": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            }),
             use_container_width=True,
         )
 
 
-def render_tabla_comparacion(datos: dict):
-    secciones_requeridas = ["primer_digito", "segundo_digito"]
-    faltantes = [c for c in secciones_requeridas if c not in datos]
+def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_titulo: str, funcion_veredicto):
+    campos_requeridos = ["n_valido", "mad", "chi2", "p_valor", "resultados"]
+    faltantes = [c for c in campos_requeridos if c not in datos]
     if faltantes:
-        st.error(f"Al archivo de comparación le faltan las secciones: {', '.join(faltantes)}.")
+        st.error(f"Al archivo de **{nombre_tabla}** le faltan los campos: {', '.join(faltantes)}.")
+        return
+    render_metricas_digito(datos, funcion_veredicto)
+    render_grafico_digito(datos, titulo_figura, x_titulo, nombre_tabla)
+
+
+def render_tabla_comparacion(datos: dict):
+    campos_requeridos = ["legitimas", "lavado", "incremento_porcentual"]
+    faltantes = [c for c in campos_requeridos if c not in datos]
+    if faltantes:
+        st.error(f"Al archivo de comparación le faltan los campos: {', '.join(faltantes)}.")
+        return
+
+    claves_incremento = {"primer_digito": "delta_mad_1d_pct", "segundo_digito": "delta_mad_2d_pct"}
+    faltan_inc = [v for v in claves_incremento.values() if v not in datos["incremento_porcentual"]]
+    if faltan_inc:
+        st.error(f"A 'incremento_porcentual' le falta: {', '.join(faltan_inc)}.")
         return
 
     etiquetas = {"primer_digito": "Primer dígito", "segundo_digito": "Segundo dígito"}
+    for grupo in ["legitimas", "lavado"]:
+        faltan_pos = [p for p in etiquetas if p not in datos[grupo]]
+        if faltan_pos:
+            st.error(f"A la sección '{grupo}' le falta: {', '.join(faltan_pos)}.")
+            return
+
+    incremento = datos["incremento_porcentual"]
     filas = []
-    incrementos = {}
     mads_leg = []
     mads_lav = []
 
     for clave, etiqueta in etiquetas.items():
-        seccion = datos[clave]
-        faltan_sub = [s for s in ["legitimas", "lavado"] if s not in seccion]
-        if faltan_sub:
-            st.error(f"A la sección '{clave}' le falta: {', '.join(faltan_sub)}.")
-            return
-        mad_leg = seccion["legitimas"]["mad"]
-        mad_lav = seccion["lavado"]["mad"]
-        inc = incremento_pct(mad_leg, mad_lav)
-        incrementos[clave] = inc
-        mads_leg.append(mad_leg)
-        mads_lav.append(mad_lav)
+        leg = datos["legitimas"][clave]
+        lav = datos["lavado"][clave]
+        mads_leg.append(leg["mad"])
+        mads_lav.append(lav["mad"])
+        inc = incremento[claves_incremento[clave]]
         filas.append({
             "Posición": etiqueta,
-            "N Legítimas": seccion["legitimas"].get("n_valido"),
-            "MAD Legítimas": mad_leg,
-            "N Lavado": seccion["lavado"].get("n_valido"),
-            "MAD Lavado": mad_lav,
-            "Incremento MAD": inc,
+            "N Legítimas": leg.get("n_valido"),
+            "MAD Legítimas": leg["mad"],
+            "χ² Legítimas": leg.get("chi2"),
+            "N Lavado": lav.get("n_valido"),
+            "MAD Lavado": lav["mad"],
+            "χ² Lavado": lav.get("chi2"),
+            "Δ% MAD": inc,
         })
 
     tabla_resumen = pd.DataFrame(filas)
     st.dataframe(
         tabla_resumen.style.format({
-            "MAD Legítimas": "{:.6f}",
-            "MAD Lavado": "{:.6f}",
-            "Incremento MAD": "{:+.1f}%",
+            "N Legítimas": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            "MAD Legítimas": lambda v: formato_es(v, 6),
+            "χ² Legítimas": lambda v: formato_es(v, 1) if pd.notna(v) else "—",
+            "N Lavado": lambda v: formato_es(v, 0) if pd.notna(v) else "—",
+            "MAD Lavado": lambda v: formato_es(v, 6),
+            "χ² Lavado": lambda v: formato_es(v, 1) if pd.notna(v) else "—",
+            "Δ% MAD": lambda v: formato_es_pct(v, 1),
         }),
         use_container_width=True,
     )
@@ -633,19 +757,17 @@ def render_tabla_comparacion(datos: dict):
     posiciones = [etiquetas["primer_digito"], etiquetas["segundo_digito"]]
     fig.add_trace(go.Bar(
         x=posiciones, y=mads_leg, name="Legítimas", marker_color="#2ca02c",
-        text=[f"{v:.6f}" for v in mads_leg], textposition="outside",
+        text=[formato_es(v, 6) for v in mads_leg], textposition="outside",
     ))
     fig.add_trace(go.Bar(
         x=posiciones, y=mads_lav, name="Lavado", marker_color="#d62728",
-        text=[f"{v:.6f}" for v in mads_lav], textposition="outside",
+        text=[formato_es(v, 6) for v in mads_lav], textposition="outside",
     ))
     for i, clave in enumerate(["primer_digito", "segundo_digito"]):
-        inc = incrementos[clave]
-        if np.isnan(inc):
-            continue
+        inc = incremento[claves_incremento[clave]]
         fig.add_annotation(
             x=posiciones[i], y=max(mads_leg[i], mads_lav[i]),
-            text=f"+{inc:.1f}%", showarrow=True, arrowhead=2, ay=-40,
+            text=formato_es_pct(inc, 1), showarrow=True, arrowhead=2, ay=-40,
             font=dict(color="#d62728", size=14),
         )
     fig.update_layout(
@@ -657,16 +779,36 @@ def render_tabla_comparacion(datos: dict):
     st.plotly_chart(fig, use_container_width=True)
 
     for clave, etiqueta in etiquetas.items():
-        inc = incrementos[clave]
-        if np.isnan(inc):
-            continue
+        inc = incremento[claves_incremento[clave]]
         if inc > 0:
             st.error(
-                f"🚨 En **{etiqueta.lower()}**, el MAD de **Lavado** es un **{inc:+.1f}%** "
-                f"más alto que el de **Legítimas** — señal de alerta de posible manipulación."
+                f"🚨 En **{etiqueta.lower()}**, el MAD de **Lavado** es un **{formato_es_pct(inc, 1)}** "
+                "más alto que el de **Legítimas** — señal de alerta de posible manipulación."
             )
         else:
-            st.info(f"En {etiqueta.lower()}, el MAD de Lavado no es mayor que el de Legítimas.")
+            st.info(
+                f"En {etiqueta.lower()}, el MAD de Lavado no es mayor que el de "
+                f"Legítimas ({formato_es_pct(inc, 1)})."
+            )
+
+    with st.expander("Ver detalle por dígito — Legítimas vs. Lavado"):
+        for clave, etiqueta in etiquetas.items():
+            st.markdown(f"**{etiqueta}**")
+            col_leg, col_lav = st.columns(2)
+            with col_leg:
+                st.caption("Legítimas")
+                render_metricas_digito(datos["legitimas"][clave])
+                render_grafico_digito(
+                    datos["legitimas"][clave], f"{etiqueta} — Legítimas", etiqueta,
+                    f"{etiqueta} (Legítimas)",
+                )
+            with col_lav:
+                st.caption("Lavado")
+                render_metricas_digito(datos["lavado"][clave])
+                render_grafico_digito(
+                    datos["lavado"][clave], f"{etiqueta} — Lavado", etiqueta,
+                    f"{etiqueta} (Lavado)",
+                )
 
 
 def modo_resultados_tesis():
