@@ -472,14 +472,21 @@ def formato_es_pvalor(p_valor) -> str:
     return f"{p_valor:.2e}".replace(".", ",")
 
 
+NOTA_NOMBRES_ALTERNATIVOS = (
+    "El campo de chi-cuadrado acepta tanto `chi2` como cualquier nombre que "
+    "empiece con `chi2` (ej. `chi2_8`, `chi2_9`, según los grados de "
+    "libertad). El detalle por dígito acepta tanto `resultados` como "
+    "`resultados_por_digito`."
+)
+
 EJEMPLO_TABLA_PRIMER_DIGITO = {
     "n_valido": 4929615,
     "mad": 0.004913,
-    "chi2": 10736.4,
+    "chi2_8": 10736.4,
     "grados_libertad": 8,
     "p_valor": 0.0,
     "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
-    "resultados": [
+    "resultados_por_digito": [
         {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
         {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300},
         "... (un objeto por cada dígito del 1 al 9)",
@@ -489,11 +496,11 @@ EJEMPLO_TABLA_PRIMER_DIGITO = {
 EJEMPLO_TABLA_SEGUNDO_DIGITO = {
     "n_valido": 4927977,
     "mad": 0.000324,
-    "chi2": 109.9,
+    "chi2_9": 109.9,
     "grados_libertad": 9,
     "p_valor": 0.0,
     "interpretacion_mad": "Conformidad aceptable con Benford",
-    "resultados": [
+    "resultados_por_digito": [
         {"digito": 0, "observado_pct": 12.00, "benford_pct": 11.968, "diferencia_abs": 0.032, "z_score": 0.9, "n_observado": 591300},
         {"digito": 1, "observado_pct": 11.40, "benford_pct": 11.389, "diferencia_abs": 0.011, "z_score": 0.3, "n_observado": 561800},
         "... (un objeto por cada dígito del 0 al 9)",
@@ -503,22 +510,22 @@ EJEMPLO_TABLA_SEGUNDO_DIGITO = {
 EJEMPLO_TABLA_COMPARACION = {
     "legitimas": {
         "primer_digito": {
-            "n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0,
-            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+            "n_valido": 4900000, "mad": 0.004905, "chi2_8": 9000.0, "p_valor": 0.0,
+            "resultados_por_digito": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
         },
         "segundo_digito": {
-            "n_valido": 4900000, "mad": 0.000324, "chi2": 100.0, "p_valor": 0.5,
-            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+            "n_valido": 4900000, "mad": 0.000324, "chi2_9": 100.0, "p_valor": 0.5,
+            "resultados_por_digito": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
         },
     },
     "lavado": {
         "primer_digito": {
-            "n_valido": 29615, "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0,
-            "resultados": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
+            "n_valido": 29615, "mad": 0.020627, "chi2_8": 5000.0, "p_valor": 0.0,
+            "resultados_por_digito": ["... (mismo formato que en tabla2, un objeto por dígito del 1 al 9)"],
         },
         "segundo_digito": {
-            "n_valido": 27977, "mad": 0.004509, "chi2": 200.0, "p_valor": 0.0,
-            "resultados": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
+            "n_valido": 27977, "mad": 0.004509, "chi2_9": 200.0, "p_valor": 0.0,
+            "resultados_por_digito": ["... (mismo formato que en tabla3, un objeto por dígito del 0 al 9)"],
         },
     },
     "incremento_porcentual": {
@@ -552,14 +559,46 @@ def placeholder_json_faltante(nombre_archivo: str, ejemplo: dict, error: str):
     )
     with st.expander(f"Ver esquema JSON esperado para `{nombre_archivo}`"):
         st.code(json.dumps(ejemplo, indent=2, ensure_ascii=False), language="json")
+        st.caption(NOTA_NOMBRES_ALTERNATIVOS)
+
+
+CLAVES_RESULTADOS_POR_DIGITO = ["resultados", "resultados_por_digito"]
+COLUMNAS_TABLA_RESULTADOS = ["digito", "observado_pct", "benford_pct", "diferencia_abs", "z_score", "n_observado"]
+
+
+def obtener_resultados_por_digito(datos: dict):
+    """Devuelve la lista de resultados por dígito, aceptando tanto 'resultados'
+    como 'resultados_por_digito' (nombre usado en los JSON reales de las
+    Tablas 15 y 16). Devuelve None si no se encuentra ninguna de las dos."""
+    for clave in CLAVES_RESULTADOS_POR_DIGITO:
+        if clave in datos:
+            return datos[clave]
+    return None
+
+
+def obtener_chi2(datos: dict):
+    """Devuelve el valor de chi-cuadrado, aceptando 'chi2' o cualquier campo
+    que empiece con 'chi2' (ej. 'chi2_8', 'chi2_9', usados en los JSON reales
+    según los grados de libertad). Devuelve None si no se encuentra."""
+    if "chi2" in datos:
+        return datos["chi2"]
+    for clave, valor in datos.items():
+        if isinstance(clave, str) and clave.startswith("chi2"):
+            return valor
+    return None
 
 
 def tabla_desde_resultados(resultados):
-    """Construye un DataFrame a partir de la lista 'resultados' del JSON,
-    usando los campos (observado_pct, benford_pct, diferencia_abs, z_score,
-    n_observado) tal cual vienen, sin recalcular nada."""
+    """Construye un DataFrame a partir de la lista de resultados por dígito
+    del JSON, usando los campos (observado_pct, benford_pct, diferencia_abs,
+    z_score, n_observado) tal cual vienen, sin recalcular nada.
+
+    Se fuerzan las columnas esperadas explícitamente (vía `columns=`) para
+    que el DataFrame nunca quede sin ellas —ni siquiera si `resultados`
+    viene vacío o con elementos inválidos—, evitando un KeyError aguas
+    abajo en los gráficos."""
     filas = []
-    for item in resultados:
+    for item in resultados or []:
         if not isinstance(item, dict):
             continue
         filas.append({
@@ -570,7 +609,7 @@ def tabla_desde_resultados(resultados):
             "z_score": item.get("z_score"),
             "n_observado": item.get("n_observado"),
         })
-    return pd.DataFrame(filas)
+    return pd.DataFrame(filas, columns=COLUMNAS_TABLA_RESULTADOS)
 
 
 def grafico_comparativo_tesis(tabla: pd.DataFrame, titulo: str, x_titulo: str):
@@ -618,7 +657,7 @@ def grafico_zscore_tesis(tabla: pd.DataFrame, x_titulo: str, umbral: float = 1.9
 def render_metricas_digito(datos: dict, funcion_veredicto=None):
     n_valido = datos["n_valido"]
     mad = datos["mad"]
-    chi2 = datos["chi2"]
+    chi2 = obtener_chi2(datos)
     p_valor = datos["p_valor"]
     gl = datos.get("grados_libertad")
     etiqueta_chi2 = f"Chi-cuadrado (gl={gl})" if gl is not None else "Chi-cuadrado"
@@ -626,7 +665,7 @@ def render_metricas_digito(datos: dict, funcion_veredicto=None):
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("N (válidos)", formato_es(n_valido, 0))
     c2.metric("MAD", formato_es(mad, 6))
-    c3.metric(etiqueta_chi2, formato_es(chi2, 1))
+    c3.metric(etiqueta_chi2, formato_es(chi2, 1) if chi2 is not None else "—")
     c4.metric("Valor p", formato_es_pvalor(p_valor))
 
     interpretacion = datos.get("interpretacion_mad")
@@ -651,16 +690,24 @@ def render_metricas_digito(datos: dict, funcion_veredicto=None):
 
 
 def render_grafico_digito(datos: dict, titulo_figura: str, x_titulo: str, nombre_tabla: str):
-    if "resultados" not in datos:
-        st.error(f"Al archivo de **{nombre_tabla}** le falta el campo 'resultados'.")
+    resultados = obtener_resultados_por_digito(datos)
+    if resultados is None:
+        st.error(
+            f"Al archivo de **{nombre_tabla}** le falta el campo 'resultados' "
+            "(o 'resultados_por_digito')."
+        )
         return
     try:
-        tabla = tabla_desde_resultados(datos["resultados"])
+        tabla = tabla_desde_resultados(resultados)
     except (KeyError, TypeError) as e:
         st.error(
-            "Cada elemento de 'resultados' debe incluir 'digito', 'observado_pct' "
-            f"y 'benford_pct' (falta {e})."
+            "Cada elemento de 'resultados'/'resultados_por_digito' debe incluir "
+            f"'digito', 'observado_pct' y 'benford_pct' (falta {e})."
         )
+        return
+
+    if tabla.empty:
+        st.warning(f"'{nombre_tabla}': la lista de resultados por dígito está vacía.")
         return
 
     c1, c2 = st.columns([2, 1])
@@ -688,8 +735,12 @@ def render_grafico_digito(datos: dict, titulo_figura: str, x_titulo: str, nombre
 
 
 def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_titulo: str, funcion_veredicto):
-    campos_requeridos = ["n_valido", "mad", "chi2", "p_valor", "resultados"]
-    faltantes = [c for c in campos_requeridos if c not in datos]
+    campos_base = ["n_valido", "mad", "p_valor"]
+    faltantes = [c for c in campos_base if c not in datos]
+    if obtener_chi2(datos) is None:
+        faltantes.append("chi2 (o chi2_N)")
+    if obtener_resultados_por_digito(datos) is None:
+        faltantes.append("resultados (o resultados_por_digito)")
     if faltantes:
         st.error(f"Al archivo de **{nombre_tabla}** le faltan los campos: {', '.join(faltantes)}.")
         return
@@ -732,10 +783,10 @@ def render_tabla_comparacion(datos: dict):
             "Posición": etiqueta,
             "N Legítimas": leg.get("n_valido"),
             "MAD Legítimas": leg["mad"],
-            "χ² Legítimas": leg.get("chi2"),
+            "χ² Legítimas": obtener_chi2(leg),
             "N Lavado": lav.get("n_valido"),
             "MAD Lavado": lav["mad"],
-            "χ² Lavado": lav.get("chi2"),
+            "χ² Lavado": obtener_chi2(lav),
             "Δ% MAD": inc,
         })
 
