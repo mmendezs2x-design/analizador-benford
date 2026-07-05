@@ -11,14 +11,16 @@ completo ni la serie completa de montos en memoria.
 
 import gc
 import gzip
+import json
 import zipfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from benford import AcumuladorDigitos
+from benford import AcumuladorDigitos, veredicto_mad_primer_digito, veredicto_mad_segundo_digito
 
 st.set_page_config(
     page_title="Analizador Forense de Benford",
@@ -31,6 +33,11 @@ TIPOS_ARCHIVO_ACEPTADOS = ["csv", "gz", "zip"]
 FILAS_MUESTRA = 20
 TAMANO_CHUNK = 200_000
 LIMITE_VALORES_UNICOS = 50
+
+RUTA_BASE = Path(__file__).resolve().parent
+RUTA_TABLA_PRIMER_DIGITO = RUTA_BASE / "tabla2_benford_primer_digito_resultados.json"
+RUTA_TABLA_SEGUNDO_DIGITO = RUTA_BASE / "tabla3_benford_segundo_digito_resultados.json"
+RUTA_TABLA_COMPARACION = RUTA_BASE / "tabla4_comparacion_lavado_legitimas.json"
 
 
 # ------------------------- Lectura de archivos por chunks -------------------------
@@ -436,6 +443,271 @@ def modo_comparacion_subconjuntos(separador: str, decimal: str):
             mostrar_analisis(resultado)
 
 
+# ------------------------- Modo: resultados de la tesis (JSON precalculados) -------------------------
+
+EJEMPLO_TABLA_PRIMER_DIGITO = {
+    "n_valido": 1000000,
+    "mad": 0.0049,
+    "chi2": 100.0,
+    "grados_libertad": 8,
+    "p_valor": 0.25,
+    "interpretacion_mad": "Conformidad aceptable con Benford",
+    "resultados_por_digito": [
+        {"digito": 1, "frecuencia_observada": 0.301, "frecuencia_esperada": 0.30103},
+        {"digito": 2, "frecuencia_observada": 0.176, "frecuencia_esperada": 0.17609},
+        "... (un objeto por cada dígito del 1 al 9)",
+    ],
+}
+
+EJEMPLO_TABLA_SEGUNDO_DIGITO = {
+    "n_valido": 1000000,
+    "mad": 0.0009,
+    "chi2": 12.0,
+    "grados_libertad": 9,
+    "p_valor": 0.9,
+    "interpretacion_mad": "Conformidad aceptable con Benford",
+    "resultados_por_digito": [
+        {"digito": 0, "frecuencia_observada": 0.120, "frecuencia_esperada": 0.11968},
+        {"digito": 1, "frecuencia_observada": 0.114, "frecuencia_esperada": 0.11389},
+        "... (un objeto por cada dígito del 0 al 9)",
+    ],
+}
+
+EJEMPLO_TABLA_COMPARACION = {
+    "primer_digito": {
+        "legitimas": {
+            "n_valido": 900000, "mad": 0.0049, "chi2": 100.0, "p_valor": 0.25,
+            "interpretacion_mad": "Conformidad aceptable con Benford",
+        },
+        "lavado": {
+            "n_valido": 5000, "mad": 0.0206, "chi2": 500.0, "p_valor": 0.0,
+            "interpretacion_mad": "No conformidad: asociación grave (posible anomalía)",
+        },
+    },
+    "segundo_digito": {
+        "legitimas": {
+            "n_valido": 900000, "mad": 0.0003, "chi2": 12.0, "p_valor": 0.9,
+            "interpretacion_mad": "Conformidad aceptable con Benford",
+        },
+        "lavado": {
+            "n_valido": 5000, "mad": 0.0045, "chi2": 300.0, "p_valor": 0.0,
+            "interpretacion_mad": "No conformidad: asociación grave (posible anomalía)",
+        },
+    },
+}
+
+
+def cargar_json(ruta: Path):
+    """Carga un archivo JSON de resultados. Devuelve (datos, error); error es
+    None si la carga fue exitosa."""
+    if not ruta.exists():
+        return None, "no_encontrado"
+    try:
+        with open(ruta, "r", encoding="utf-8") as f:
+            return json.load(f), None
+    except (json.JSONDecodeError, OSError) as e:
+        return None, str(e)
+
+
+def placeholder_json_faltante(nombre_archivo: str, ejemplo: dict, error: str):
+    if error == "no_encontrado":
+        st.warning(f"⚠️ No se encontró el archivo **`{nombre_archivo}`** en el repositorio.")
+    else:
+        st.error(f"⚠️ No se pudo leer **`{nombre_archivo}`**: {error}")
+    st.markdown(
+        f"Para mostrar esta sección, agrega un archivo llamado `{nombre_archivo}` "
+        "en la raíz del repositorio (junto a `app.py`) con la estructura indicada abajo, "
+        "y vuelve a cargar la página."
+    )
+    with st.expander(f"Ver esquema JSON esperado para `{nombre_archivo}`"):
+        st.code(json.dumps(ejemplo, indent=2, ensure_ascii=False), language="json")
+
+
+def tabla_desde_resultados_por_digito(resultados_por_digito):
+    filas = []
+    for item in resultados_por_digito:
+        if not isinstance(item, dict):
+            continue
+        filas.append({
+            "digito": item["digito"],
+            "freq_observada": item["frecuencia_observada"],
+            "freq_esperada": item["frecuencia_esperada"],
+        })
+    return pd.DataFrame(filas)
+
+
+def render_tabla_digito(datos: dict, nombre_tabla: str, titulo_figura: str, x_titulo: str, funcion_veredicto):
+    campos_requeridos = ["n_valido", "mad", "chi2", "p_valor", "resultados_por_digito"]
+    faltantes = [c for c in campos_requeridos if c not in datos]
+    if faltantes:
+        st.error(f"Al archivo de **{nombre_tabla}** le faltan los campos: {', '.join(faltantes)}.")
+        return
+
+    n_valido = datos["n_valido"]
+    mad = datos["mad"]
+    chi2 = datos["chi2"]
+    p_valor = datos["p_valor"]
+    gl = datos.get("grados_libertad", len(datos["resultados_por_digito"]) - 1)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("N (válidos)", f"{n_valido:,}")
+    c2.metric("MAD", f"{mad:.6f}")
+    c3.metric(f"Chi-cuadrado (gl={gl})", f"{chi2:,.1f}")
+    c4.metric("Valor p", f"{p_valor:.5f}" if p_valor >= 0.00001 else f"{p_valor:.2e}")
+
+    _, nivel = funcion_veredicto(mad)
+    interpretacion = datos.get("interpretacion_mad", "")
+    if interpretacion:
+        mensaje = f"**Interpretación del MAD:** {interpretacion}"
+        if nivel == "success":
+            st.success(mensaje)
+        elif nivel == "info":
+            st.info(mensaje)
+        elif nivel == "warning":
+            st.warning(mensaje)
+        else:
+            st.error(mensaje)
+
+    try:
+        tabla = tabla_desde_resultados_por_digito(datos["resultados_por_digito"])
+    except (KeyError, TypeError) as e:
+        st.error(
+            "Cada elemento de 'resultados_por_digito' debe incluir 'digito', "
+            f"'frecuencia_observada' y 'frecuencia_esperada' (falta {e})."
+        )
+        return
+
+    st.plotly_chart(grafico_comparativo(tabla, titulo_figura, x_titulo), use_container_width=True)
+    with st.expander(f"Ver tabla de datos — {nombre_tabla}"):
+        st.dataframe(
+            tabla.style.format({"freq_observada": "{:.4%}", "freq_esperada": "{:.4%}"}),
+            use_container_width=True,
+        )
+
+
+def render_tabla_comparacion(datos: dict):
+    secciones_requeridas = ["primer_digito", "segundo_digito"]
+    faltantes = [c for c in secciones_requeridas if c not in datos]
+    if faltantes:
+        st.error(f"Al archivo de comparación le faltan las secciones: {', '.join(faltantes)}.")
+        return
+
+    etiquetas = {"primer_digito": "Primer dígito", "segundo_digito": "Segundo dígito"}
+    filas = []
+    incrementos = {}
+    mads_leg = []
+    mads_lav = []
+
+    for clave, etiqueta in etiquetas.items():
+        seccion = datos[clave]
+        faltan_sub = [s for s in ["legitimas", "lavado"] if s not in seccion]
+        if faltan_sub:
+            st.error(f"A la sección '{clave}' le falta: {', '.join(faltan_sub)}.")
+            return
+        mad_leg = seccion["legitimas"]["mad"]
+        mad_lav = seccion["lavado"]["mad"]
+        inc = incremento_pct(mad_leg, mad_lav)
+        incrementos[clave] = inc
+        mads_leg.append(mad_leg)
+        mads_lav.append(mad_lav)
+        filas.append({
+            "Posición": etiqueta,
+            "N Legítimas": seccion["legitimas"].get("n_valido"),
+            "MAD Legítimas": mad_leg,
+            "N Lavado": seccion["lavado"].get("n_valido"),
+            "MAD Lavado": mad_lav,
+            "Incremento MAD": inc,
+        })
+
+    tabla_resumen = pd.DataFrame(filas)
+    st.dataframe(
+        tabla_resumen.style.format({
+            "MAD Legítimas": "{:.6f}",
+            "MAD Lavado": "{:.6f}",
+            "Incremento MAD": "{:+.1f}%",
+        }),
+        use_container_width=True,
+    )
+
+    fig = go.Figure()
+    posiciones = [etiquetas["primer_digito"], etiquetas["segundo_digito"]]
+    fig.add_trace(go.Bar(
+        x=posiciones, y=mads_leg, name="Legítimas", marker_color="#2ca02c",
+        text=[f"{v:.6f}" for v in mads_leg], textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        x=posiciones, y=mads_lav, name="Lavado", marker_color="#d62728",
+        text=[f"{v:.6f}" for v in mads_lav], textposition="outside",
+    ))
+    for i, clave in enumerate(["primer_digito", "segundo_digito"]):
+        inc = incrementos[clave]
+        if np.isnan(inc):
+            continue
+        fig.add_annotation(
+            x=posiciones[i], y=max(mads_leg[i], mads_lav[i]),
+            text=f"+{inc:.1f}%", showarrow=True, arrowhead=2, ay=-40,
+            font=dict(color="#d62728", size=14),
+        )
+    fig.update_layout(
+        title="Figura 3: MAD — Legítimas vs. Lavado",
+        yaxis_title="MAD",
+        barmode="group",
+        height=430,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    for clave, etiqueta in etiquetas.items():
+        inc = incrementos[clave]
+        if np.isnan(inc):
+            continue
+        if inc > 0:
+            st.error(
+                f"🚨 En **{etiqueta.lower()}**, el MAD de **Lavado** es un **{inc:+.1f}%** "
+                f"más alto que el de **Legítimas** — señal de alerta de posible manipulación."
+            )
+        else:
+            st.info(f"En {etiqueta.lower()}, el MAD de Lavado no es mayor que el de Legítimas.")
+
+
+def modo_resultados_tesis():
+    st.header("🎓 Resultados de la tesis")
+    st.markdown(
+        "Resultados **pre-calculados** del estudio, leídos directamente de archivos "
+        "JSON incluidos en el repositorio (no se recalculan en la app)."
+    )
+
+    datos_primer, error_primer = cargar_json(RUTA_TABLA_PRIMER_DIGITO)
+    st.subheader("Tabla 15 — Análisis de primer dígito (global)")
+    if datos_primer is None:
+        placeholder_json_faltante(RUTA_TABLA_PRIMER_DIGITO.name, EJEMPLO_TABLA_PRIMER_DIGITO, error_primer)
+    else:
+        render_tabla_digito(
+            datos_primer, "Tabla 15 (primer dígito)",
+            "Figura 1: Primer dígito — Observado vs. Benford", "Primer dígito",
+            veredicto_mad_primer_digito,
+        )
+
+    st.markdown("---")
+    datos_segundo, error_segundo = cargar_json(RUTA_TABLA_SEGUNDO_DIGITO)
+    st.subheader("Tabla 16 — Análisis de segundo dígito (global)")
+    if datos_segundo is None:
+        placeholder_json_faltante(RUTA_TABLA_SEGUNDO_DIGITO.name, EJEMPLO_TABLA_SEGUNDO_DIGITO, error_segundo)
+    else:
+        render_tabla_digito(
+            datos_segundo, "Tabla 16 (segundo dígito)",
+            "Figura 2: Segundo dígito — Observado vs. Benford", "Segundo dígito",
+            veredicto_mad_segundo_digito,
+        )
+
+    st.markdown("---")
+    datos_comp, error_comp = cargar_json(RUTA_TABLA_COMPARACION)
+    st.subheader("Tabla 17 — Comparación: Legítimas vs. Lavado")
+    if datos_comp is None:
+        placeholder_json_faltante(RUTA_TABLA_COMPARACION.name, EJEMPLO_TABLA_COMPARACION, error_comp)
+    else:
+        render_tabla_comparacion(datos_comp)
+
+
 # ------------------------- Interfaz principal -------------------------
 
 st.title("🔍 Analizador Forense de Benford")
@@ -446,23 +718,34 @@ st.markdown(
     "Los archivos se procesan por chunks para soportar CSV de gran tamaño con bajo consumo de memoria."
 )
 
+MODO_TESIS = "🎓 Resultados de la tesis"
+MODO_ARCHIVO_UNICO = "Archivo único (con etiqueta opcional)"
+MODO_COMPARACION = "Comparación de subconjuntos"
+
 with st.sidebar:
     st.header("⚙️ Configuración")
     modo = st.radio(
         "Modo de análisis",
-        ["Archivo único (con etiqueta opcional)", "Comparación de subconjuntos"],
+        [MODO_TESIS, MODO_ARCHIVO_UNICO, MODO_COMPARACION],
     )
-    separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
-    decimal = st.selectbox("Separador decimal", [".", ","], index=0)
 
+    separador = decimal = None
     archivo = None
-    if modo == "Archivo único (con etiqueta opcional)":
+    if modo != MODO_TESIS:
+        separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
+        decimal = st.selectbox("Separador decimal", [".", ","], index=0)
+
+    if modo == MODO_ARCHIVO_UNICO:
         archivo = st.file_uploader(
             "Sube un archivo de transacciones (CSV, CSV.GZ o ZIP)",
             type=TIPOS_ARCHIVO_ACEPTADOS,
         )
 
-if modo == "Comparación de subconjuntos":
+if modo == MODO_TESIS:
+    modo_resultados_tesis()
+    st.stop()
+
+if modo == MODO_COMPARACION:
     modo_comparacion_subconjuntos(separador, decimal)
     st.stop()
 

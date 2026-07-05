@@ -4,8 +4,22 @@ Aplicación web construida con **Streamlit** para la detección de anomalías en
 transacciones financieras aplicando la **Ley de Benford**, siguiendo la
 metodología de auditoría forense de **Mark Nigrini**.
 
+Al abrir la aplicación, la vista por defecto es **"🎓 Resultados de la
+tesis"**, que muestra resultados ya calculados leídos desde archivos JSON
+incluidos en el repositorio. El análisis en vivo sobre archivos CSV sigue
+disponible en los otros dos modos del panel lateral.
+
 ## Funcionalidades
 
+0. **Modo "Resultados de la tesis" (vista por defecto)**: muestra la Tabla
+   15 (primer dígito, global), Tabla 16 (segundo dígito, global) y Tabla 17
+   (comparación Legítimas vs. Lavado) leyendo sus valores — N, MAD,
+   interpretación, Chi-cuadrado, valor p y frecuencias por dígito —
+   directamente de tres archivos JSON en la raíz del repositorio, sin
+   recalcular nada. Ver la sección
+   [Modo "Resultados de la tesis"](#modo-resultados-de-la-tesis) para el
+   esquema exacto esperado. Si algún JSON no está presente, la app muestra
+   un aviso con instrucciones y el esquema esperado en su lugar.
 1. **Carga de datos**: sube un archivo de transacciones en formato **CSV**,
    **CSV.GZ** (comprimido con gzip) o **ZIP** (con uno o más CSV dentro; si
    contiene varios, se puede elegir cuál usar). Elige la columna de montos
@@ -144,14 +158,78 @@ RAM), la aplicación **nunca carga el archivo completo en un DataFrame**:
 - El tamaño de chunk (`TAMANO_CHUNK` en `app.py`, 200.000 filas por
   defecto) puede reducirse si tu entorno tiene menos memoria disponible.
 
+## Modo "Resultados de la tesis"
+
+Este modo (la vista por defecto de la app) **no calcula nada**: lee tres
+archivos JSON que deben colocarse en la **raíz del repositorio** (junto a
+`app.py`), con los nombres exactos:
+
+- `tabla2_benford_primer_digito_resultados.json` → Tabla 15 (primer dígito, global) + Figura 1
+- `tabla3_benford_segundo_digito_resultados.json` → Tabla 16 (segundo dígito, global) + Figura 2
+- `tabla4_comparacion_lavado_legitimas.json` → Tabla 17 (comparación Legítimas vs. Lavado) + Figura 3
+
+Si alguno de los tres archivos no existe (o no se puede leer), la app
+muestra un aviso junto con el esquema JSON esperado, en lugar de esa
+sección.
+
+**Esquema de `tabla2_..._primer_digito_resultados.json` y
+`tabla3_..._segundo_digito_resultados.json`** (mismo esquema para ambos;
+el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
+
+```json
+{
+  "n_valido": 4929615,
+  "mad": 0.004913,
+  "chi2": 10736.4,
+  "grados_libertad": 8,
+  "p_valor": 0.0,
+  "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
+  "resultados_por_digito": [
+    {"digito": 1, "frecuencia_observada": 0.301, "frecuencia_esperada": 0.30103},
+    {"digito": 2, "frecuencia_observada": 0.176, "frecuencia_esperada": 0.17609}
+  ]
+}
+```
+
+- `resultados_por_digito` debe traer un objeto por cada dígito posible
+  (9 para el primer dígito, 10 para el segundo), con `frecuencia_observada`
+  y `frecuencia_esperada` como proporciones (0–1).
+- `grados_libertad` es opcional (por defecto, cantidad de dígitos − 1).
+- El color de la interpretación del MAD (verde/azul/amarillo/rojo) se
+  calcula con los mismos rangos de Nigrini que el resto de la app a partir
+  de `mad`; el texto mostrado es siempre el de `interpretacion_mad`.
+
+**Esquema de `tabla4_comparacion_lavado_legitimas.json`:**
+
+```json
+{
+  "primer_digito": {
+    "legitimas": {"n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0, "interpretacion_mad": "..."},
+    "lavado":     {"n_valido": 29615,  "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0, "interpretacion_mad": "..."}
+  },
+  "segundo_digito": {
+    "legitimas": {"n_valido": 4900000, "mad": 0.000324, "chi2": 100.0, "p_valor": 0.5, "interpretacion_mad": "..."},
+    "lavado":     {"n_valido": 27977,  "mad": 0.004509, "chi2": 200.0, "p_valor": 0.0, "interpretacion_mad": "..."}
+  }
+}
+```
+
+El incremento porcentual del MAD (Lavado vs. Legítimas) que se muestra en
+la Tabla 17 y la Figura 3 **se calcula en la app** a partir de los dos
+valores de `mad` de cada sección — no se lee un campo aparte — por lo que
+siempre es consistente con los `mad` provistos.
+
 ## Estructura del proyecto
 
 ```
 .
-├── app.py                    # Interfaz Streamlit (lectura y procesamiento por chunks)
-├── benford.py                # Lógica estadística (Ley de Benford, MAD, Chi², Z-scores, acumulador incremental)
-├── requirements.txt          # Dependencias
-├── .streamlit/config.toml    # Configuración de Streamlit (tamaño máximo de subida)
+├── app.py                                          # Interfaz Streamlit (lectura y procesamiento por chunks)
+├── benford.py                                      # Lógica estadística (Ley de Benford, MAD, Chi², Z-scores, acumulador incremental)
+├── requirements.txt                                # Dependencias
+├── .streamlit/config.toml                          # Configuración de Streamlit (tamaño máximo de subida)
+├── tabla2_benford_primer_digito_resultados.json    # (a agregar) Tabla 15 / Figura 1
+├── tabla3_benford_segundo_digito_resultados.json   # (a agregar) Tabla 16 / Figura 2
+├── tabla4_comparacion_lavado_legitimas.json         # (a agregar) Tabla 17 / Figura 3
 └── README.md
 ```
 
