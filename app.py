@@ -4,6 +4,10 @@ Aplicación Streamlit para detección de anomalías en transacciones financieras
 basada en la metodología de Nigrini (análisis de primer y segundo dígito).
 """
 
+import gzip
+import io
+import zipfile
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -24,6 +28,43 @@ st.set_page_config(
 )
 
 UMBRAL_MINIMO = 1.00
+TIPOS_ARCHIVO_ACEPTADOS = ["csv", "gz", "zip"]
+
+
+def leer_csv_subido(archivo, sep: str, decimal: str, key_prefix: str = "") -> pd.DataFrame:
+    """Lee un archivo subido en formato .csv, .csv.gz o .zip (con uno o más CSV)."""
+    nombre = archivo.name.lower()
+    contenido = archivo.read()
+
+    if nombre.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(contenido)) as zf:
+            csvs = [
+                n for n in zf.namelist()
+                if n.lower().endswith(".csv") and not n.startswith("__MACOSX")
+            ]
+            if not csvs:
+                raise ValueError("El archivo ZIP no contiene ningún archivo CSV.")
+            if len(csvs) == 1:
+                nombre_csv = csvs[0]
+            else:
+                nombre_csv = st.selectbox(
+                    "El ZIP contiene varios archivos CSV, elige cuál usar:",
+                    csvs,
+                    key=f"{key_prefix}_zip_select",
+                )
+            with zf.open(nombre_csv) as f:
+                return pd.read_csv(f, sep=sep, decimal=decimal)
+    elif nombre.endswith(".gz"):
+        with gzip.GzipFile(fileobj=io.BytesIO(contenido)) as f:
+            return pd.read_csv(f, sep=sep, decimal=decimal)
+    else:
+        return pd.read_csv(io.BytesIO(contenido), sep=sep, decimal=decimal)
+
+
+def incremento_pct(base: float, nuevo: float) -> float:
+    if base == 0 or np.isnan(base):
+        return np.nan
+    return (nuevo - base) / base * 100
 
 
 def grafico_comparativo(tabla: pd.DataFrame, titulo: str, x_titulo: str):
@@ -140,6 +181,138 @@ def mostrar_analisis(resultado: dict):
             )
 
 
+def modo_comparacion_subconjuntos(separador: str, decimal: str):
+    st.header("🧪 Comparación de subconjuntos")
+    st.markdown(
+        "Carga por separado hasta tres conjuntos de transacciones (cada uno en "
+        "**CSV**, **CSV.GZ** o **ZIP**) para comparar su conformidad con la Ley "
+        "de Benford. Se necesitan al menos **dos** conjuntos cargados para "
+        "generar la comparación."
+    )
+
+    slots = ["Conjunto Válido (global)", "Transacciones Legítimas", "Transacciones de Lavado"]
+    claves = ["valido", "legitimas", "lavado"]
+
+    columnas_layout = st.columns(3)
+    subconjuntos = {}
+
+    for columna, nombre, clave in zip(columnas_layout, slots, claves):
+        with columna:
+            st.subheader(nombre)
+            archivo = st.file_uploader(
+                "Subir archivo", type=TIPOS_ARCHIVO_ACEPTADOS, key=f"upload_{clave}"
+            )
+            if archivo is None:
+                continue
+            try:
+                df_sub = leer_csv_subido(archivo, separador, decimal, key_prefix=clave)
+            except Exception as e:
+                st.error(f"No se pudo leer el archivo: {e}")
+                continue
+            if df_sub.empty:
+                st.error("El archivo está vacío.")
+                continue
+
+            col_monto = st.selectbox(
+                "Columna de montos", list(df_sub.columns), key=f"col_monto_{clave}"
+            )
+            montos = preprocesar_montos(df_sub[col_monto], UMBRAL_MINIMO)
+            st.caption(f"{len(montos):,} registros válidos de {len(df_sub):,} totales.")
+
+            if len(montos) == 0:
+                st.warning("No quedan registros válidos tras el preprocesamiento.")
+                continue
+            if len(montos) < 30:
+                st.warning("Menos de 30 observaciones válidas: resultados poco confiables.")
+
+            subconjuntos[nombre] = analisis_completo(montos)
+
+    if len(subconjuntos) < 2:
+        st.info("Carga al menos dos conjuntos para ver la tabla comparativa.")
+        return
+
+    st.markdown("---")
+    st.subheader("📊 Tabla comparativa de conformidad")
+
+    def resaltar_lavado(fila):
+        if fila["Conjunto"] == "Transacciones de Lavado":
+            return ["background-color: rgba(214, 39, 40, 0.18)"] * len(fila)
+        return [""] * len(fila)
+
+    for etiqueta_digito, clave_digito in [
+        ("Primer dígito", "primer_digito"),
+        ("Segundo dígito", "segundo_digito"),
+    ]:
+        st.markdown(f"#### {etiqueta_digito}")
+        filas = []
+        for nombre, resultado in subconjuntos.items():
+            r = resultado[clave_digito]
+            filas.append({
+                "Conjunto": nombre,
+                "N": r["n"],
+                "MAD": r["mad"],
+                "Chi-cuadrado": r["chi2"],
+                "Valor p": r["p_valor"],
+                "Veredicto": r["veredicto"],
+            })
+        tabla_comp = pd.DataFrame(filas)
+        st.dataframe(
+            tabla_comp.style.apply(resaltar_lavado, axis=1).format({
+                "MAD": "{:.5f}",
+                "Chi-cuadrado": "{:.3f}",
+                "Valor p": "{:.5f}",
+            }),
+            use_container_width=True,
+        )
+
+    if "Transacciones Legítimas" in subconjuntos and "Transacciones de Lavado" in subconjuntos:
+        st.markdown("---")
+        st.subheader("🚩 Incremento del MAD: Transacciones de Lavado vs. Legítimas")
+
+        mad_leg_1 = subconjuntos["Transacciones Legítimas"]["primer_digito"]["mad"]
+        mad_lav_1 = subconjuntos["Transacciones de Lavado"]["primer_digito"]["mad"]
+        mad_leg_2 = subconjuntos["Transacciones Legítimas"]["segundo_digito"]["mad"]
+        mad_lav_2 = subconjuntos["Transacciones de Lavado"]["segundo_digito"]["mad"]
+
+        inc_1 = incremento_pct(mad_leg_1, mad_lav_1)
+        inc_2 = incremento_pct(mad_leg_2, mad_lav_2)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("MAD primer dígito — Legítimas", f"{mad_leg_1:.5f}")
+            st.metric(
+                "MAD primer dígito — Lavado",
+                f"{mad_lav_1:.5f}",
+                delta=f"{inc_1:+.1f}%" if not np.isnan(inc_1) else "N/D",
+                delta_color="inverse",
+            )
+        with c2:
+            st.metric("MAD segundo dígito — Legítimas", f"{mad_leg_2:.5f}")
+            st.metric(
+                "MAD segundo dígito — Lavado",
+                f"{mad_lav_2:.5f}",
+                delta=f"{inc_2:+.1f}%" if not np.isnan(inc_2) else "N/D",
+                delta_color="inverse",
+            )
+
+        if not np.isnan(inc_1) and inc_1 > 0:
+            st.error(
+                f"🚨 El conjunto de **Transacciones de Lavado** presenta un MAD de "
+                f"primer dígito un **{inc_1:.1f}%** más alto que el de **Transacciones "
+                "Legítimas**, lo que indica una desviación mucho mayor respecto a la "
+                "Ley de Benford y constituye una señal de alerta de posible manipulación."
+            )
+        elif not np.isnan(inc_1):
+            st.info(
+                "El conjunto de Lavado no muestra un MAD de primer dígito mayor que "
+                "el de Legítimas en esta comparación."
+            )
+
+    for nombre, resultado in subconjuntos.items():
+        with st.expander(f"Ver detalle completo — {nombre}"):
+            mostrar_analisis(resultado)
+
+
 # ------------------------- Interfaz principal -------------------------
 
 st.title("🔍 Analizador Forense de Benford")
@@ -151,17 +324,30 @@ st.markdown(
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-    archivo = st.file_uploader("Sube un archivo CSV de transacciones", type=["csv"])
-
+    modo = st.radio(
+        "Modo de análisis",
+        ["Archivo único (con etiqueta opcional)", "Comparación de subconjuntos"],
+    )
     separador = st.selectbox("Separador de columnas", [",", ";", "\t", "|"], index=0)
     decimal = st.selectbox("Separador decimal", [".", ","], index=0)
 
+    archivo = None
+    if modo == "Archivo único (con etiqueta opcional)":
+        archivo = st.file_uploader(
+            "Sube un archivo de transacciones (CSV, CSV.GZ o ZIP)",
+            type=TIPOS_ARCHIVO_ACEPTADOS,
+        )
+
+if modo == "Comparación de subconjuntos":
+    modo_comparacion_subconjuntos(separador, decimal)
+    st.stop()
+
 if archivo is None:
-    st.info("👈 Sube un archivo CSV en el panel lateral para comenzar el análisis.")
+    st.info("👈 Sube un archivo en el panel lateral para comenzar el análisis.")
     st.markdown(
         """
         **Requisitos del archivo:**
-        - Formato CSV con encabezados de columna.
+        - Formato **CSV**, **CSV.GZ** o **ZIP** (con un CSV dentro), con encabezados de columna.
         - Debe incluir una columna numérica con los **montos** de las transacciones.
         - Opcionalmente, una columna binaria que etiquete cada transacción como
           *legítima* o *de riesgo/fraude* (por ejemplo: 0/1, "Sí"/"No", "Riesgo"/"Legítima").
@@ -170,9 +356,9 @@ if archivo is None:
     st.stop()
 
 try:
-    df = pd.read_csv(archivo, sep=separador, decimal=decimal)
+    df = leer_csv_subido(archivo, separador, decimal, key_prefix="unico")
 except Exception as e:
-    st.error(f"No se pudo leer el archivo CSV: {e}")
+    st.error(f"No se pudo leer el archivo: {e}")
     st.stop()
 
 if df.empty:
@@ -293,11 +479,6 @@ if col_etiqueta:
         mad_riesgo_1 = resultado_riesgo["primer_digito"]["mad"]
         mad_leg_2 = resultado_legitimas["segundo_digito"]["mad"]
         mad_riesgo_2 = resultado_riesgo["segundo_digito"]["mad"]
-
-        def incremento_pct(base, nuevo):
-            if base == 0:
-                return np.nan
-            return (nuevo - base) / base * 100
 
         inc_1 = incremento_pct(mad_leg_1, mad_riesgo_1)
         inc_2 = incremento_pct(mad_leg_2, mad_riesgo_2)
