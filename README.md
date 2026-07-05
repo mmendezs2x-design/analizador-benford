@@ -180,19 +180,24 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 {
   "n_valido": 4929615,
   "mad": 0.004913,
-  "chi2": 10736.4,
+  "chi2_8": 10736.4,
   "grados_libertad": 8,
   "p_valor": 0.0,
   "interpretacion_mad": "Conformidad aceptable, con asociación marginal",
-  "resultados": [
+  "resultados_por_digito": [
     {"digito": 1, "observado_pct": 30.10, "benford_pct": 30.103, "diferencia_abs": 0.003, "z_score": 1.2, "n_observado": 1483700},
     {"digito": 2, "observado_pct": 17.55, "benford_pct": 17.609, "diferencia_abs": 0.059, "z_score": 2.1, "n_observado": 865300}
   ]
 }
 ```
 
-- `resultados` debe traer un objeto por cada dígito posible (9 para el
-  primer dígito, 10 para el segundo). `digito`, `observado_pct` y
+- El campo de chi-cuadrado acepta tanto `chi2` como cualquier nombre que
+  **empiece con `chi2`** (ej. `chi2_8`, `chi2_9`, según los grados de
+  libertad) — así son los nombres reales usados en estos archivos.
+- El detalle por dígito acepta tanto `resultados` como
+  `resultados_por_digito` (nombre real usado en las Tablas 15 y 16).
+  Debe traer un objeto por cada dígito posible (9 para el primer
+  dígito, 10 para el segundo). `digito`, `observado_pct` y
   `benford_pct` son obligatorios; `diferencia_abs`, `z_score` y
   `n_observado` son opcionales y, si están presentes, se usan **tal
   cual** (no se recalculan) tanto en la tabla de detalle como en el
@@ -203,8 +208,8 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 - `interpretacion_mad` es opcional: si falta, la app muestra el
   veredicto calculado con los mismos rangos de Nigrini que el resto de
   la app a partir de `mad` (el color siempre sigue esos rangos).
-- Todos los valores (`n_valido`, `mad`, `chi2`, `p_valor`) se muestran
-  **exactamente como vienen en el JSON**, solo con formato de
+- Todos los valores (`n_valido`, `mad`, chi-cuadrado, `p_valor`) se
+  muestran **exactamente como vienen en el JSON**, solo con formato de
   presentación en español (punto de miles, coma decimal).
 
 **Esquema de `tabla4_comparacion_lavado_legitimas.json`:**
@@ -212,12 +217,12 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 ```json
 {
   "legitimas": {
-    "primer_digito":  {"n_valido": 4900000, "mad": 0.004905, "chi2": 9000.0, "p_valor": 0.0, "resultados": ["..."]},
-    "segundo_digito": {"n_valido": 4900000, "mad": 0.000324, "chi2": 100.0,  "p_valor": 0.5, "resultados": ["..."]}
+    "primer_digito":  {"n_valido": 4900000, "mad": 0.004905, "chi2_8": 9000.0, "p_valor": 0.0, "resultados_por_digito": ["..."]},
+    "segundo_digito": {"n_valido": 4900000, "mad": 0.000324, "chi2_9": 100.0,  "p_valor": 0.5, "resultados_por_digito": ["..."]}
   },
   "lavado": {
-    "primer_digito":  {"n_valido": 29615, "mad": 0.020627, "chi2": 5000.0, "p_valor": 0.0, "resultados": ["..."]},
-    "segundo_digito": {"n_valido": 27977, "mad": 0.004509, "chi2": 200.0,  "p_valor": 0.0, "resultados": ["..."]}
+    "primer_digito":  {"n_valido": 29615, "mad": 0.020627, "chi2_8": 5000.0, "p_valor": 0.0, "resultados_por_digito": ["..."]},
+    "segundo_digito": {"n_valido": 27977, "mad": 0.004509, "chi2_9": 200.0,  "p_valor": 0.0, "resultados_por_digito": ["..."]}
   },
   "incremento_porcentual": {
     "delta_mad_1d_pct": 320.6,
@@ -228,10 +233,11 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 
 - Cada bloque `legitimas.primer_digito` / `legitimas.segundo_digito` /
   `lavado.primer_digito` / `lavado.segundo_digito` usa el **mismo
-  esquema** que `tabla2_.../tabla3_...` (incluyendo su propio
-  `resultados` con `observado_pct`/`benford_pct`/`z_score`/etc.), y
-  alimenta los gráficos del detalle expandible "Ver detalle por
-  dígito — Legítimas vs. Lavado".
+  esquema** que `tabla2_.../tabla3_...` (incluyendo su propio detalle
+  por dígito con `observado_pct`/`benford_pct`/`z_score`/etc., y la
+  misma tolerancia de nombres para el chi-cuadrado y el detalle por
+  dígito), y alimenta los gráficos del detalle expandible "Ver detalle
+  por dígito — Legítimas vs. Lavado".
 - `incremento_porcentual.delta_mad_1d_pct` (primer dígito) y
   `delta_mad_2d_pct` (segundo dígito) son los porcentajes de incremento
   del MAD de Lavado respecto a Legítimas — la app **los lee
