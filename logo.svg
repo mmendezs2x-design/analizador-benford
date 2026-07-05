@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Analizador Forense de Benford">
+  <defs>
+    <linearGradient id="bf-grad" x1="4" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Barras decrecientes: distribución del primer dígito de Benford -->
+  <rect x="10" y="21" width="5" height="19" rx="1.2" fill="url(#bf-grad)"/>
+  <rect x="17" y="25" width="5" height="15" rx="1.2" fill="url(#bf-grad)"/>
+  <rect x="24" y="28" width="5" height="12" rx="1.2" fill="url(#bf-grad)"/>
+  <rect x="31" y="31" width="5" height="9" rx="1.2" fill="url(#bf-grad)"/>
+  <rect x="38" y="33" width="5" height="7" rx="1.2" fill="url(#bf-grad)"/>
+
+  <!-- Curva logarítmica de Benford -->
+  <path d="M9 18.5 C 17 20.5, 27 26, 44 33.5" stroke="#F8FAFC" stroke-opacity="0.9"
+        stroke-width="2" stroke-linecap="round" fill="none"/>
+
+  <!-- Lupa forense -->
+  <circle cx="26" cy="27" r="19" stroke="url(#bf-grad)" stroke-width="3.4"/>
+  <line x1="39.6" y1="40.6" x2="53" y2="54" stroke="url(#bf-grad)" stroke-width="4.6" stroke-linecap="round"/>
+</svg>
