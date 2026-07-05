@@ -9,6 +9,7 @@ etiqueta) y acumulando solo conteos de dígitos — nunca se retiene el archivo
 completo ni la serie completa de montos en memoria.
 """
 
+import base64
 import gc
 import gzip
 import json
@@ -38,6 +39,8 @@ RUTA_BASE = Path(__file__).resolve().parent
 RUTA_TABLA_PRIMER_DIGITO = RUTA_BASE / "tabla2_benford_primer_digito_resultados.json"
 RUTA_TABLA_SEGUNDO_DIGITO = RUTA_BASE / "tabla3_benford_segundo_digito_resultados.json"
 RUTA_TABLA_COMPARACION = RUTA_BASE / "tabla4_comparacion_lavado_legitimas.json"
+RUTA_LOGO_SVG = RUTA_BASE / "logo.svg"
+RUTA_LOGO_UNEMI = RUTA_BASE / "logo_unemi.png"
 
 
 # ------------------------- Paleta e identidad visual -------------------------
@@ -47,6 +50,7 @@ COLOR_FONDO = "#0B1220"
 COLOR_TARJETA = "#141B2D"
 COLOR_BORDE = "rgba(255, 255, 255, 0.08)"
 COLOR_ACENTO = "#22D3EE"
+COLOR_VIOLETA = "#8B5CF6"
 COLOR_TEXTO = "#E6EDF3"
 COLOR_TEXTO_SECUNDARIO = "#8B98AC"
 
@@ -71,6 +75,18 @@ NIVEL_A_SEMAFORO = {
 }
 
 
+def cargar_svg_inline(ruta: Path) -> str:
+    """Lee un SVG del repositorio para incrustarlo inline en HTML (permite
+    heredar tamaño/estilo por CSS). Devuelve cadena vacía si no existe."""
+    try:
+        return ruta.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+LOGO_SVG_INLINE = cargar_svg_inline(RUTA_LOGO_SVG)
+
+
 def inyectar_estilos():
     st.markdown(
         f"""
@@ -82,9 +98,15 @@ def inyectar_estilos():
         div[data-testid="stMetric"] {{
             background: {COLOR_TARJETA};
             border: 1px solid {COLOR_BORDE};
-            border-radius: 12px;
+            border-radius: 14px;
             padding: 0.9rem 1.1rem;
             overflow: visible;
+            box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.04), 0 8px 24px -12px rgba(34, 211, 238, 0.35);
+            transition: box-shadow 0.15s ease, border-color 0.15s ease;
+        }}
+        div[data-testid="stMetric"]:hover {{
+            border-color: rgba(139, 92, 246, 0.4);
+            box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.12), 0 10px 30px -10px rgba(139, 92, 246, 0.45);
         }}
         div[data-testid="stMetricLabel"] {{
             color: {COLOR_TEXTO_SECUNDARIO};
@@ -107,20 +129,82 @@ def inyectar_estilos():
             text-overflow: clip;
         }}
 
-        .app-header {{
-            margin-bottom: 0.6rem;
+        .grad-text {{
+            background: linear-gradient(90deg, {COLOR_ACENTO}, #3B82F6, {COLOR_VIOLETA});
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
         }}
-        .app-header-titulo {{
-            font-size: 2.1rem;
-            font-weight: 700;
-            letter-spacing: -0.01em;
+
+        .app-hero {{
+            display: flex;
+            align-items: center;
+            gap: 1.1rem;
+            margin-bottom: 0.9rem;
+        }}
+        .app-hero-logo {{
+            flex: 0 0 auto;
+            width: 60px;
+            height: 60px;
+            filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.35));
+        }}
+        .app-hero-logo svg {{
+            width: 100%;
+            height: 100%;
+            display: block;
+        }}
+        .app-hero-eyebrow {{
+            color: {COLOR_TEXTO_SECUNDARIO};
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.2rem;
+        }}
+        .app-hero-titulo {{
+            font-size: 2.3rem;
+            font-weight: 800;
+            letter-spacing: -0.015em;
             color: {COLOR_TEXTO};
-            margin-bottom: 0.15rem;
+            line-height: 1.12;
+            margin-bottom: 0.25rem;
         }}
-        .app-header-subtitulo {{
+        .app-hero-subtitulo {{
             color: {COLOR_TEXTO_SECUNDARIO};
             font-size: 1.02rem;
             font-weight: 400;
+            margin-bottom: 0.55rem;
+        }}
+        .hero-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.3rem 0.9rem;
+            border-radius: 999px;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            background: linear-gradient(90deg, rgba(34, 211, 238, 0.10), rgba(139, 92, 246, 0.10));
+            color: #D6E0FF;
+            font-size: 0.76rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }}
+        .hero-badge-dot {{
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: linear-gradient(90deg, {COLOR_ACENTO}, {COLOR_VIOLETA});
+        }}
+
+        div.stButton > button[kind="primary"] {{
+            background: linear-gradient(90deg, {COLOR_ACENTO}, #3B82F6, {COLOR_VIOLETA});
+            border: none;
+            color: #06121F;
+            font-weight: 700;
+            box-shadow: 0 6px 20px -8px rgba(139, 92, 246, 0.55);
+        }}
+        div.stButton > button[kind="primary"]:hover {{
+            filter: brightness(1.08);
+            box-shadow: 0 8px 24px -6px rgba(139, 92, 246, 0.65);
         }}
 
         .badge-veredicto {{
@@ -185,6 +269,16 @@ def inyectar_estilos():
             color: {COLOR_TEXTO_SECUNDARIO};
             font-size: 0.8rem;
             line-height: 1.7;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }}
+        .app-footer-logo {{
+            width: 44px;
+            height: 44px;
+            object-fit: contain;
+            flex: 0 0 auto;
+            border-radius: 6px;
         }}
         .app-footer strong {{
             color: {COLOR_TEXTO};
@@ -200,9 +294,9 @@ def inyectar_estilos():
         }}
         .sidebar-destacado {{
             display: inline-block;
-            background: rgba(34, 211, 238, 0.12);
+            background: linear-gradient(90deg, rgba(34, 211, 238, 0.14), rgba(139, 92, 246, 0.14));
             color: {COLOR_ACENTO};
-            border: 1px solid rgba(34, 211, 238, 0.35);
+            border: 1px solid rgba(139, 92, 246, 0.4);
             border-radius: 999px;
             padding: 0.15rem 0.6rem;
             font-size: 0.68rem;
@@ -210,6 +304,29 @@ def inyectar_estilos():
             letter-spacing: 0.03em;
             text-transform: uppercase;
             margin-bottom: 0.4rem;
+        }}
+
+        .sidebar-logo {{
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 0.4rem;
+        }}
+        .sidebar-logo-icono {{
+            width: 34px;
+            height: 34px;
+            flex: 0 0 auto;
+        }}
+        .sidebar-logo-icono svg {{
+            width: 100%;
+            height: 100%;
+            display: block;
+        }}
+        .sidebar-logo-texto {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: {COLOR_TEXTO};
+            line-height: 1.15;
         }}
         </style>
         """,
@@ -253,16 +370,39 @@ def aplicar_tema_grafico(fig):
     return fig
 
 
+def cargar_imagen_base64(ruta: Path) -> str | None:
+    """Codifica una imagen del repositorio en base64 para incrustarla inline
+    en HTML. Devuelve None si el archivo no existe."""
+    try:
+        datos = ruta.read_bytes()
+    except OSError:
+        return None
+    return f"data:image/png;base64,{base64.b64encode(datos).decode('ascii')}"
+
+
 def render_footer():
+    # Construido como una sola línea (sin saltos de línea intermedios): si
+    # logo_html queda vacío (no hay logo_unemi.png), una línea en blanco en
+    # medio del bloque HTML corta el parseo de Markdown y el resto se
+    # muestra como texto/código crudo en vez de HTML.
+    logo_unemi_src = cargar_imagen_base64(RUTA_LOGO_UNEMI)
+    logo_html = (
+        f'<img src="{logo_unemi_src}" class="app-footer-logo" alt="UNEMI">'
+        if logo_unemi_src else ""
+    )
+    contenido = (
+        '<div class="app-footer">'
+        f'{logo_html}'
+        '<div class="app-footer-texto">'
+        '<strong>La Ley de Benford como Herramienta de Calibración Forense para la '
+        'Detección de Lavado de Activos: Aplicación para el SRI y la UAFE</strong><br>'
+        'Mauricio Xavier Méndez Silva &middot; Solange Ana Chávez Escalante<br>'
+        'Universidad Estatal de Milagro (UNEMI) &middot; 2026'
+        '</div>'
+        '</div>'
+    )
     st.markdown(
-        """
-        <div class="app-footer">
-            <strong>La Ley de Benford como Herramienta de Calibración Forense para la
-            Detección de Lavado de Activos: Aplicación para el SRI y la UAFE</strong><br>
-            Mauricio Xavier Méndez Silva &middot; Solange Ana Chávez Escalante<br>
-            Universidad Estatal de Milagro (UNEMI) &middot; 2026
-        </div>
-        """,
+        contenido,
         unsafe_allow_html=True,
     )
 
@@ -1159,18 +1299,25 @@ def modo_resultados_tesis():
 # ------------------------- Interfaz principal -------------------------
 
 st.markdown(
-    """
-    <div class="app-header">
-        <div class="app-header-titulo">Analizador Forense de Benford</div>
-        <div class="app-header-subtitulo">Plataforma de detección de anomalías transaccionales</div>
+    f"""
+    <div class="app-hero">
+        <div class="app-hero-logo">{LOGO_SVG_INLINE}</div>
+        <div>
+            <div class="app-hero-eyebrow">Plataforma de detección de anomalías transaccionales</div>
+            <div class="app-hero-titulo">Analizador Forense <span class="grad-text">de Benford</span></div>
+            <div class="app-hero-subtitulo">
+                Calibración forense basada en la Ley de Benford para auditoría financiera y
+                detección de lavado de activos.
+            </div>
+            <div class="hero-badge"><span class="hero-badge-dot"></span>Metodología Nigrini · MAD · Chi-cuadrado · Z-score</div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 st.caption(
-    "Metodología de Mark Nigrini — análisis de primer y segundo dígito, MAD, Chi-cuadrado "
-    "y Z-scores. Los archivos CSV se procesan por chunks para soportar grandes volúmenes "
-    "con bajo consumo de memoria."
+    "Los archivos CSV se procesan por chunks para soportar grandes volúmenes con bajo "
+    "consumo de memoria."
 )
 
 MODO_TESIS = "Resultados de la tesis"
@@ -1178,6 +1325,15 @@ MODO_ARCHIVO_UNICO = "Archivo único (con etiqueta opcional)"
 MODO_COMPARACION = "Comparación de subconjuntos"
 
 with st.sidebar:
+    st.markdown(
+        f"""
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icono">{LOGO_SVG_INLINE}</div>
+            <div class="sidebar-logo-texto">Analizador Forense<br>de Benford</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown('<div class="sidebar-seccion">Modo de análisis</div>', unsafe_allow_html=True)
     st.markdown('<span class="sidebar-destacado">Recomendado</span>', unsafe_allow_html=True)
     modo = st.radio(

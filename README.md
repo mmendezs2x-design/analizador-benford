@@ -12,21 +12,34 @@ disponible en los otros dos modos del panel lateral.
 ## Diseño visual
 
 La interfaz usa un tema oscuro (configurado en `.streamlit/config.toml`,
-sección `[theme]`) con un único color de acento (cian eléctrico) sobre
-fondo azul-grafito, pensado para verse como una plataforma profesional de
-detección de fraude:
+sección `[theme]`) con estética de plataforma SaaS de gestión de riesgo
+financiero: fondo azul-noche profundo y acentos en gradiente
+cian-azul-violeta:
 
+- **Logo propio** (`logo.svg`): ícono geométrico minimalista de una lupa
+  sobre barras decrecientes de Benford con la curva logarítmica, en
+  gradiente cian → azul → violeta. Se muestra en el sidebar y en el
+  encabezado (hero section); si el archivo no existe, la app sigue
+  funcionando sin el ícono.
+- **Hero section**: eyebrow text ("Plataforma de detección de anomalías
+  transaccionales"), título grande "Analizador Forense de Benford" (con
+  "de Benford" en gradiente), subtítulo de una línea y un badge/pill con
+  borde de acento ("Metodología Nigrini · MAD · Chi-cuadrado · Z-score").
 - Las métricas (N, MAD, Chi-cuadrado, valor p) se muestran como tarjetas
-  KPI con bordes sutiles redondeados.
+  KPI con esquinas redondeadas y un borde con glow sutil del color de
+  acento.
 - El veredicto de conformidad se muestra como un badge semáforo (verde =
   conforme, ámbar = marginal, rojo = no conforme).
 - Los hallazgos de la Tabla 17 y de los análisis segmentados se destacan
   en tarjetas "Hallazgo clave".
 - Los gráficos Plotly comparten una plantilla oscura coherente (fondo
-  transparente, azul/cian para lo observado, línea clara para Benford,
-  rojo reservado para alertas).
+  transparente, cian para lo observado, línea clara para Benford, rojo
+  reservado para alertas).
+- Los botones primarios y algunos badges usan el gradiente
+  cian-azul-violeta.
 - El pie de página incluye el título de la tesis, autores, universidad y
-  año.
+  año; si existe un archivo `logo_unemi.png` en la raíz del repositorio,
+  se muestra junto al texto.
 
 Todo esto es únicamente estético: no modifica los cálculos estadísticos
 ni la forma en que se leen los archivos CSV o JSON.
@@ -282,7 +295,9 @@ el segundo dígito usa `digito` de 0 a 9, el primero de 1 a 9):
 ├── app.py                                          # Interfaz Streamlit (lectura y procesamiento por chunks)
 ├── benford.py                                      # Lógica estadística (Ley de Benford, MAD, Chi², Z-scores, acumulador incremental)
 ├── requirements.txt                                # Dependencias
-├── .streamlit/config.toml                          # Configuración de Streamlit (tamaño máximo de subida)
+├── .streamlit/config.toml                          # Configuración de Streamlit (tema oscuro, tamaño máximo de subida)
+├── logo.svg                                        # Logo propio (lupa + barras de Benford), sidebar y encabezado
+├── logo_unemi.png                                  # (opcional, a agregar) logo de la UNEMI para el pie de página
 ├── tabla2_benford_primer_digito_resultados.json    # (a agregar) Tabla 15 / Figura 1
 ├── tabla3_benford_segundo_digito_resultados.json   # (a agregar) Tabla 16 / Figura 2
 ├── tabla4_comparacion_lavado_legitimas.json         # (a agregar) Tabla 17 / Figura 3
